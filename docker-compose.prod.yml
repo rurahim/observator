@@ -1,0 +1,189 @@
+# =============================================================================
+# docker-compose.prod.yml — Production / Testing deployment
+# =============================================================================
+#
+# WHY THIS EXISTS:
+# Runs the complete Observator stack as Docker containers. Used both for:
+# - Local production simulation (before deploying to AWS)
+# - EC2 single-server testing deployment (~$33/month)
+#
+# All services are self-contained — no external dependencies like RDS,
+# ElastiCache, or CloudFront. Everything runs in Docker.
+#
+# HOW TO USE:
+#   # Create .env.prod from template:
+#   cp .env.prod.example .env.prod  # then edit with real values
+#
+#   # Build and start:
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#
+#   # Access:
+#   http://localhost           (frontend via nginx)
+#   http://localhost/api/health (backend via nginx proxy)
+#
+# GOTCHAS:
+# - You MUST create a .env.prod file (see .env.prod.example) with real secrets
+# - VITE_API_URL="" means the frontend uses relative URLs — nginx proxies
+#   /api/* to the backend container at port 8000
+# - postgres uses port 5432 internally (not 5433 like the dev compose)
+# - On EC2, only port 80 is exposed to the internet via the security group.
+#   Backend port 8000 is internal (container network only).
+# - Data volumes (pg_data, minio_data, qdrant_data) survive container restarts
+#   and `docker compose down`. Only `docker compose down -v` removes them.
+# =============================================================================
+
+services:
+  # ── Frontend (nginx serving static React build) ───────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        VITE_API_URL: ""
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    restart: always
+    networks:
+      - observator
+
+  # ── Backend API (FastAPI) ──────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    # Port 8000 is NOT exposed to the host — nginx proxies /api/* internally.
+    # Uncomment the next line if you need direct backend access for debugging:
+    # ports:
+    #   - "8000:8000"
+    volumes:
+      - /opt/observator/_master_tables:/app/_master_tables:ro
+      - /opt/observator/_analysis_results.json:/app/_analysis_results.json:ro
+    env_file: .env.prod
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://observator:${DB_PASSWORD:-observator}@postgres:5432/observator
+      - DATABASE_URL_SYNC=postgresql://observator:${DB_PASSWORD:-observator}@postgres:5432/observator
+      - MINIO_ENDPOINT=minio:9000
+      - QDRANT_HOST=qdrant
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1G
+    restart: always
+    networks:
+      - observator
+
+  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: observator
+      POSTGRES_USER: observator
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-observator}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observator -d observator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    restart: always
+    networks:
+      - observator
+
+  # ── MinIO (S3-compatible object storage) ───────────────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    restart: always
+    networks:
+      - observator
+
+  # ── Qdrant (vector database) ───────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+    restart: always
+    networks:
+      - observator
+
+  # ── Redis (caching + session) ──────────────────────────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    restart: always
+    networks:
+      - observator
+
+volumes:
+  pg_data:
+  minio_data:
+  qdrant_data:
+
+networks:
+  observator:
+    driver: bridge
