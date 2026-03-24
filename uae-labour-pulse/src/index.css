@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Observator Government Theme — Light */
+    --background: 210 33% 99%;
+    --foreground: 220 26% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 26% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 26% 14%;
+
+    --primary: 210 100% 20%;
+    --primary-foreground: 210 33% 98%;
+
+    --secondary: 210 29% 97%;
+    --secondary-foreground: 210 100% 20%;
+
+    --muted: 213 27% 96%;
+    --muted-foreground: 215 14% 47%;
+
+    --accent: 43 49% 54%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 10 85% 46%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 91%;
+    --border-light: 220 26% 95%;
+    --input: 214 32% 91%;
+    --ring: 210 100% 20%;
+
+    --radius: 0.75rem;
+
+    /* Observator Brand Colors */
+    --navy: 210 100% 20%;
+    --navy-dark: 212 100% 14%;
+    --navy-light: 205 66% 28%;
+    --navy-50: 211 42% 93%;
+
+    --gold: 43 49% 54%;
+    --gold-light: 43 69% 74%;
+    --gold-dark: 43 73% 42%;
+    --gold-50: 43 75% 96%;
+
+    --teal: 201 100% 36%;
+    --teal-light: 201 73% 94%;
+
+    /* SGI Status Colors */
+    --sgi-critical: 10 85% 46%;
+    --sgi-shortage: 40 100% 50%;
+    --sgi-balanced: 155 100% 27%;
+    --sgi-surplus: 216 100% 40%;
+    --sgi-oversupply: 349 60% 30%;
+
+    /* Surfaces */
+    --surface: 0 0% 100%;
+    --surface-secondary: 207 33% 98%;
+    --surface-tertiary: 213 33% 96%;
+    --surface-hover: 213 33% 94%;
+
+    /* Text */
+    --text-primary: 220 26% 14%;
+    --text-secondary: 215 14% 34%;
+    --text-muted: 215 14% 47%;
+
+    /* Shadows */
+    --shadow-card: 0 1px 3px rgba(0,51,102,0.04), 0 1px 2px rgba(0,51,102,0.02);
+    --shadow-card-hover: 0 4px 12px rgba(0,51,102,0.08);
+    --shadow-dropdown: 0 10px 25px rgba(0,51,102,0.12);
+
+    /* Sidebar */
+    --sidebar-background: 210 100% 20%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 43 49% 54%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 212 100% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 205 66% 28%;
+    --sidebar-ring: 43 49% 54%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', 'Tajawal', system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  [dir="rtl"] body {
+    font-family: 'Tajawal', 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
+  .shadow-dropdown {
+    box-shadow: var(--shadow-dropdown);
+  }
+  .gold-gradient-header {
+    background: linear-gradient(135deg, hsl(var(--gold-50)), hsl(var(--gold-light) / 0.3));
+  }
+  .navy-gradient {
+    background: linear-gradient(135deg, hsl(var(--navy)), hsl(var(--navy-dark)));
+  }
+}
