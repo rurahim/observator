@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Skill Gap Analysis Report</h2>
+
+<div class="summary-box no-break">
+    <h3>Key Findings</h3>
+    <p>Analysis of {{ total_occupations }} occupations across {{ total_sectors }} sectors reveals
+    {{ critical_count }} occupations with critical shortages and {{ surplus_count }} with surpluses.
+    Overall SGI: {{ overall_sgi }}.</p>
+</div>
+
+{% if occupations %}
+<h2>Occupation-Level Gap Analysis</h2>
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Occupation</th>
+            <th>ISCO Code</th>
+            <th>Supply</th>
+            <th>Demand</th>
+            <th>Gap</th>
+            <th>SGI</th>
+            <th>AI Exposure</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for occ in occupations %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ occ.occupation }}</td>
+            <td>{{ occ.code_isco or '—' }}</td>
+            <td>{{ "{:,}".format(occ.supply) }}</td>
+            <td>{{ "{:,}".format(occ.demand) }}</td>
+            <td>{{ "{:,}".format(occ.gap) }}</td>
+            <td>{{ occ.sgi }}</td>
+            <td>
+                {% if occ.ai_exposure %}
+                <div class="bar-container">
+                    <div class="bar bar-exposure" style="width: {{ occ.ai_exposure }}px"></div>
+                    <span class="bar-label">{{ occ.ai_exposure }}%</span>
+                </div>
+                {% else %}
+                —
+                {% endif %}
+            </td>
+            <td>
+                {% if occ.gap < -500 %}
+                <span class="badge badge-critical">Critical</span>
+                {% elif occ.gap < 0 %}
+                <span class="badge badge-shortage">Shortage</span>
+                {% elif occ.gap == 0 %}
+                <span class="badge badge-balanced">Balanced</span>
+                {% else %}
+                <span class="badge badge-surplus">Surplus</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

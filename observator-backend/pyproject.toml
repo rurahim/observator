@@ -1,0 +1,87 @@
+[project]
+name = "observator-backend"
+version = "0.1.0"
+description = "UAE Labour Market Intelligence Platform - Backend API"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    "orjson>=3.10.0",
+    # Auth
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.0",
+    # Analytics
+    "duckdb>=1.1.0",
+    "pandas>=2.2.0",
+    "openpyxl>=3.1.0",
+    "xlrd>=2.0.0",
+    "pyarrow>=17.0.0",
+    # Object storage
+    "minio>=7.2.0",
+    # Vector search
+    "qdrant-client>=1.11.0",
+    # Cache
+    "redis>=5.0.0",
+    # Settings
+    "pydantic-settings>=2.5.0",
+    # HTTP client
+    "httpx>=0.27.0",
+    "langchain-tavily>=0.2.17",
+    "tavily-python>=0.7.23",
+    "duckduckgo-search>=8.1.1",
+    "markdownify>=1.2.2",
+    "langchain-openai>=1.1.11",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "psycopg[binary]>=3.3.3",
+    "langgraph-checkpoint-sqlite>=3.0.3",
+    "langfuse>=4.0.0",
+    "ddgs>=9.11.4",
+    # Report generation
+    "weasyprint>=61.0",
+    "jinja2>=3.1.0",
+    # Data pipeline scheduling
+    "apscheduler>=3.10.0",
+    "python-jobspy>=1.1.13",
+]
+
+[project.optional-dependencies]
+ai = [
+    "openai>=2.26.0",
+    "langgraph>=1.1.0",
+    "langgraph-prebuilt>=1.0.8",
+    "langgraph-checkpoint-postgres>=3.0.4",
+    "langchain-openai>=1.1.11",
+    "langchain>=0.3.0",
+    "langchain-core>=1.2.18",
+    "langfuse>=4.0.0",
+]
+forecast = [
+    "statsforecast>=1.7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.6.0",
+    "httpx>=0.27.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Emiratisation Progress Report</h2>
+
+<div class="kpi-grid no-break">
+    <div class="kpi-card">
+        <div class="label">Total Workforce</div>
+        <div class="value">{{ "{:,}".format(total_workforce) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Emirati Workers</div>
+        <div class="value">{{ "{:,}".format(emirati_count) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Expat Workers</div>
+        <div class="value">{{ "{:,}".format(expat_count) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Emiratisation Rate</div>
+        <div class="value">{{ emiratisation_rate }}%</div>
+    </div>
+</div>
+
+{% if by_nationality %}
+<h2>Workforce Composition</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>Nationality Category</th>
+            <th>Count</th>
+            <th>Percentage</th>
+            <th>Distribution</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in by_nationality %}
+        <tr>
+            <td>{{ row.nationality }}</td>
+            <td>{{ "{:,}".format(row.count) }}</td>
+            <td>{{ row.pct }}%</td>
+            <td>
+                <div class="bar-container">
+                    <div class="bar bar-supply" style="width: {{ (row.pct * 2)|int }}px"></div>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if by_sector %}
+<h2>Emiratisation by Sector</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>Sector</th>
+            <th>Total</th>
+            <th>Emirati</th>
+            <th>Emiratisation %</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in by_sector %}
+        <tr>
+            <td>{{ row.sector }}</td>
+            <td>{{ "{:,}".format(row.total) }}</td>
+            <td>{{ "{:,}".format(row.emirati) }}</td>
+            <td>{{ row.pct }}%</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

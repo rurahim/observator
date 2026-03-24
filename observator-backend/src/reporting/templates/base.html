@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>{{ css }}</style>
+</head>
+<body>
+    <div class="report-header">
+        <div>
+            <h1>{{ title_en }}</h1>
+            <div class="subtitle">{{ subtitle_en }}</div>
+        </div>
+        <div class="meta">
+            <div><strong>Generated:</strong> {{ generated_date }}</div>
+            <div><strong>Period:</strong> {{ period }}</div>
+            <div><strong>Classification:</strong> Government Use Only</div>
+        </div>
+    </div>
+
+    {% block content %}{% endblock %}
+
+    <div class="report-footer">
+        <div>Observator &mdash; UAE Labour Market Intelligence Platform</div>
+        <div>Generated {{ generated_date }} | Data as of {{ data_date }}</div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files (loaded separately via env_file)
+.env
+.env.example
+.env.local
+
+# Docker (avoid recursive copy)
+docker-compose*.yml
+Dockerfile
+
+# Data files
+*.csv
+*.xlsx
+*.xls
+*.parquet
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docs
+*.md
+LICENSE

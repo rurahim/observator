@@ -1,0 +1,50 @@
+{
+  "10_bayanat_education": {
+    "files": 394,
+    "rows": 76260
+  },
+  "11_bayanat_population": {
+    "files": 91,
+    "rows": 11215
+  },
+  "12_bayanat_economic": {
+    "files": 11,
+    "rows": 465
+  },
+  "14_scad_abu_dhabi": {
+    "files": 133,
+    "rows": 10127
+  },
+  "1_supply_workforce": {
+    "files": 4,
+    "rows": 3042
+  },
+  "2_supply_education": {
+    "files": 3,
+    "rows": 6529
+  },
+  "3_demand_jobs": {
+    "files": 1,
+    "rows": 36923
+  },
+  "4_taxonomy_esco": {
+    "files": 6,
+    "rows": 159756
+  },
+  "5_taxonomy_onet": {
+    "files": 8,
+    "rows": 250500
+  },
+  "6_ai_impact": {
+    "files": 2,
+    "rows": 1548
+  },
+  "7_crosswalks": {
+    "files": 1,
+    "rows": 1126
+  },
+  "8_bayanat_employment": {
+    "files": 127,
+    "rows": 188814
+  }
+}

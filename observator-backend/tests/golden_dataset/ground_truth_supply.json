@@ -1,0 +1,393 @@
+{
+  "emp_total_rows": 1394,
+  "emp_dimension_types": {
+    "economic_activity": 476,
+    "age_group": 246,
+    "employment_sector": 246,
+    "occupation": 222,
+    "wage_band": 108,
+    "employment_status": 96
+  },
+  "emp_years": [
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+  ],
+  "emp_occupation_2023": {
+    "Clerical Support Workers": 5.145479,
+    "Craft & Related Trades Workers": 15.303632,
+    "Elementary Occupations": 19.207669,
+    "Managers": 11.482201,
+    "Not Stated": 2.008187,
+    "Plant & Machine Operators": 6.964737,
+    "Professionals": 14.686675,
+    "Service & Sales Workers": 13.672173,
+    "Skilled Agricultural Workers": 1.02405,
+    "Technicians & Associate Professionals": 10.505195,
+    "Total": 100.0
+  },
+  "emp_economic_activity_2023_top5": [
+    {
+      "dimension_value": "Total",
+      "pct": 100.0
+    },
+    {
+      "dimension_value": "Total",
+      "pct": 100.0
+    },
+    {
+      "dimension_value": "Total",
+      "pct": 100.0
+    },
+    {
+      "dimension_value": "Household Employers",
+      "pct": 25.919478
+    },
+    {
+      "dimension_value": "Construction",
+      "pct": 20.447342
+    }
+  ],
+  "lf_total_rows": 1134,
+  "lf_metrics": [
+    "labour_force_pct",
+    "participation_rate_pct",
+    "outside_lf_pct"
+  ],
+  "unemp_total_rows": 486,
+  "unemp_rate_by_age_2023": {
+    "15-19": 18.288451,
+    "20-24": 5.466943,
+    "25-29": 3.129937,
+    "30-34": 1.932476,
+    "35-39": 1.216863,
+    "40-44": 1.41859,
+    "45-49": 1.228098,
+    "50-54": 0.73919,
+    "55-59": 1.582505,
+    "60-64": 1.498149,
+    "65+": 0.957913,
+    "Total": 2.150469
+  },
+  "unemp_reasons_2023": {
+    "Seeking First Job": 57.946957,
+    "Seeking Re-employment": 42.053043,
+    "Total": 100.0
+  },
+  "kpi_all": [
+    {
+      "year": 2021,
+      "kpi_name": "employee_growth_rate",
+      "value": 2.31,
+      "unit": "pct",
+      "data_source": "mohre_employee_growth_rate_2021_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "employee_growth_rate",
+      "value": 13.0,
+      "unit": "pct",
+      "data_source": "mohre_employee_growth_rate_2021_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "employee_growth_rate",
+      "value": 10.7,
+      "unit": "pct",
+      "data_source": "mohre_employee_growth_rate_2021_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "employee_growth_rate",
+      "value": 12.0,
+      "unit": "pct",
+      "data_source": "mohre_employee_growth_rate_2021_2024"
+    },
+    {
+      "year": 2020,
+      "kpi_name": "establishment_growth_rate",
+      "value": 2.46,
+      "unit": "pct",
+      "data_source": "mohre_establishment_growth_rate_2020_2024"
+    },
+    {
+      "year": 2021,
+      "kpi_name": "establishment_growth_rate",
+      "value": 6.56,
+      "unit": "pct",
+      "data_source": "mohre_establishment_growth_rate_2020_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "establishment_growth_rate",
+      "value": 11.08,
+      "unit": "pct",
+      "data_source": "mohre_establishment_growth_rate_2020_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "establishment_growth_rate",
+      "value": 17.53,
+      "unit": "pct",
+      "data_source": "mohre_establishment_growth_rate_2020_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "establishment_growth_rate",
+      "value": 17.02,
+      "unit": "pct",
+      "data_source": "mohre_establishment_growth_rate_2020_2024"
+    },
+    {
+      "year": 2020,
+      "kpi_name": "emiratis_in_private_sector",
+      "value": 34510.0,
+      "unit": "count",
+      "data_source": "mohre_emiratis_in_private_sector_2020_2024"
+    },
+    {
+      "year": 2021,
+      "kpi_name": "emiratis_in_private_sector",
+      "value": 37569.0,
+      "unit": "count",
+      "data_source": "mohre_emiratis_in_private_sector_2020_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "emiratis_in_private_sector",
+      "value": 60136.0,
+      "unit": "count",
+      "data_source": "mohre_emiratis_in_private_sector_2020_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "emiratis_in_private_sector",
+      "value": 91773.0,
+      "unit": "count",
+      "data_source": "mohre_emiratis_in_private_sector_2020_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "emiratis_in_private_sector",
+      "value": 131883.0,
+      "unit": "count",
+      "data_source": "mohre_emiratis_in_private_sector_2020_2024"
+    },
+    {
+      "year": 2021,
+      "kpi_name": "nafis_establishments_hiring_emiratis",
+      "value": 7201.0,
+      "unit": "count",
+      "data_source": "mohre_nafis_establishments_hiring_emiratis_2021_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "nafis_establishments_hiring_emiratis",
+      "value": 14351.0,
+      "unit": "count",
+      "data_source": "mohre_nafis_establishments_hiring_emiratis_2021_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "nafis_establishments_hiring_emiratis",
+      "value": 18457.0,
+      "unit": "count",
+      "data_source": "mohre_nafis_establishments_hiring_emiratis_2021_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "nafis_establishments_hiring_emiratis",
+      "value": 27277.0,
+      "unit": "count",
+      "data_source": "mohre_nafis_establishments_hiring_emiratis_2021_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "wage_protection_coverage",
+      "value": 97.69,
+      "unit": "pct",
+      "data_source": "mohre_wage_protection_coverage_2022_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "wage_protection_coverage",
+      "value": 98.29,
+      "unit": "pct",
+      "data_source": "mohre_wage_protection_coverage_2022_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "wage_protection_coverage",
+      "value": 99.0,
+      "unit": "pct",
+      "data_source": "mohre_wage_protection_coverage_2022_2024"
+    },
+    {
+      "year": 2022,
+      "kpi_name": "complaints_resolution_rate",
+      "value": 81.0,
+      "unit": "pct",
+      "data_source": "mohre_complaints_resolution_rate_2022_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "complaints_resolution_rate",
+      "value": 81.0,
+      "unit": "pct",
+      "data_source": "mohre_complaints_resolution_rate_2022_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "complaints_resolution_rate",
+      "value": 98.0,
+      "unit": "pct",
+      "data_source": "mohre_complaints_resolution_rate_2022_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "fake_emiratisation_penalties",
+      "value": 997.0,
+      "unit": "count",
+      "data_source": "mohre_fake_emiratisation_penalties_2023_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "fake_emiratisation_penalties",
+      "value": 1037.0,
+      "unit": "count",
+      "data_source": "mohre_fake_emiratisation_penalties_2023_2024"
+    },
+    {
+      "year": 2023,
+      "kpi_name": "unemployment_insurance_subscribers",
+      "value": 6494497.0,
+      "unit": "count",
+      "data_source": "mohre_unemployment_insurance_subscribers_2023_2024"
+    },
+    {
+      "year": 2024,
+      "kpi_name": "unemployment_insurance_subscribers",
+      "value": 7298155.0,
+      "unit": "count",
+      "data_source": "mohre_unemployment_insurance_subscribers_2023_2024"
+    }
+  ],
+  "programs_by_degree": {
+    "Bachelor": 167,
+    "Master": 13,
+    "Applied Bachelor": 6,
+    "Doctorate": 4
+  },
+  "total_programs": 190,
+  "total_courses": 6188,
+  "unique_courses": 3769,
+  "courses_by_category": {
+    "core": 5040,
+    "elective": 801,
+    "practical": 347
+  },
+  "ai_ml_courses": [
+    " AI and Machine Learning in Architectural Design",
+    "Machine Learning in Biomedical Informatics",
+    "Artificial Intelligence in Healthcare",
+    "Machine learning for Business Analytics",
+    "Artificial Intelligence and Machine Learning for Business",
+    "AI and Machine Learning Platforms in Finance",
+    "AI and Machine Learning for Decision Making",
+    "Philosophy & Psychology of Artificial Intelligence",
+    "Introduction to Artificial Intelligence",
+    "Machine Learning",
+    "Artificial Intelligence",
+    "Machine Learning for Robotics",
+    "Artificial Intelligence & Machine Learning",
+    "Advanced Machine Learning",
+    "Cybersecurity Automation and Artificial Intelligence",
+    "Machine Learning Fundamentals",
+    "Machine Learning for Business Analytics",
+    "AI and Machine Learning Applications in Management",
+    "Data science and Artificial Intelligence",
+    "Leading with Emerging Technologies and Artificial Intelligence",
+    "Machine Learning and AI",
+    "Advanced Machine Learning Techniques",
+    "Machine Learning for Business",
+    "Advanced Topics in Machine Learning",
+    "Applied Machine Learning in Finance"
+  ],
+  "ai_ml_course_count": 25,
+  "cybersecurity_courses": [
+    "Financial Markets and the Business EnvironmentCybersecurity and the",
+    "Technology & Cyber Security in Global Affairs",
+    "Network Security",
+    "Cybersecurity Fundamentals",
+    "Cybersecurity Applications for Business Intelligence",
+    "Cybersecurity Laws and Financial Compliance",
+    "Cybersecurity Policy in Public Administration",
+    "Cybersecurity Principles",
+    "Cybersecurity",
+    "Cybersecurity in Networking",
+    "Introduction to Cybersecurity",
+    "Cryptography and Network Security",
+    "Cybersecurity Policy and Compliance",
+    "Network Security and Protocols",
+    "Cybersecurity Automation and Artificial Intelligence",
+    "Ethics, Law, and Policy in Cybersecurity",
+    "Cybersecurity Project Management",
+    "Cybersecurity in Mobile and Wireless Networks",
+    "Network Security & Firewalls",
+    "Cybersecurity for Mechatronic Systems",
+    "Cybersecurity Analytics",
+    "Cybersecurity Data Analytics",
+    "Cybersecurity & Financial Data Protection"
+  ],
+  "cybersecurity_course_count": 23,
+  "data_science_courses": [
+    "Data Science and Analytics for Accounting",
+    "Data Science and Analytics in Accounting",
+    "Data Analytics for",
+    "Statistics and Data Analysis for Aviation",
+    "Aviation Data Analytics",
+    "Introduction to data science",
+    "Social data analysis 1",
+    "Social data analysis 2",
+    "Big Data Analytics in Healthcare",
+    "Data Science for Business",
+    "Big Data Analytics and Tools",
+    "Applied Data Analytics and Reporting",
+    "Data Analysis for Quality",
+    "Data Analytics for Industrial Engineers",
+    "Data Analytics for Management",
+    "Data Analytics and Optimization",
+    "Data Analytics for Public Policy",
+    "Visual Data Analytics",
+    "AI and Data Science Applications in Biochemistry",
+    "Statistical Data Analysis",
+    "Statistical Methods for Data Science",
+    "Introduction to Data Science",
+    "Ethics in Data Science",
+    "Introduction to Health Data Science",
+    "Health Data Analytics",
+    "Environmental Health Data Analysis",
+    "Data Analysis and Visualization for Engineers",
+    "Data Analytics Methods",
+    "Data Analytics and Business Intelligence",
+    "Data Analytics for Management Decision-Making",
+    "Statistics and Data Analytics",
+    "Marine Data Analysis",
+    "Meteorological Data Analysis",
+    "Data science and Artificial Intelligence",
+    "Statistics & Data Analysis for Social Research",
+    "Data Analytics",
+    "Cybersecurity Data Analytics",
+    "Research Methods and Data Analytics for Environmental"
+  ],
+  "data_science_course_count": 38,
+  "total_institutions": 151,
+  "institutions_by_source": {
+    "mohesr": 93,
+    "caa": 37,
+    "khda": 21
+  },
+  "active_institutions": 73
+}

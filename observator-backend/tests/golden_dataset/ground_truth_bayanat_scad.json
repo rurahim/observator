@@ -1,0 +1,42 @@
+{
+  "bayanat_employment": {
+    "total_files": 87,
+    "total_rows": 186926,
+    "private_sector_by_activity_rows": 113283,
+    "private_sector_by_activity_columns": [
+      "year",
+      "gender_en",
+      "gender_ar",
+      "age_class_en",
+      "age_class_ar",
+      "emirate_en",
+      "emirate_ar",
+      "city_en",
+      "city_ar",
+      "longitude",
+      "latitude",
+      "activity_en",
+      "activity_ar",
+      "skill_en",
+      "skill_ar",
+      "e_mohre_count"
+    ],
+    "private_sector_by_occupation_rows": 65760
+  },
+  "bayanat_education": {
+    "total_files": 339,
+    "total_rows": 58015
+  },
+  "bayanat_unemployment": {
+    "total_files": 9,
+    "total_rows": 594
+  },
+  "bayanat_population": {
+    "total_files": 66,
+    "total_rows": 3547
+  },
+  "scad_abu_dhabi": {
+    "total_files": 90,
+    "total_rows": 3793
+  }
+}

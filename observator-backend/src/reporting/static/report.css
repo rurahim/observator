@@ -1,0 +1,251 @@
+/* Observator Government Report Styling — UAE Navy/Gold theme */
+
+@page {
+    size: A4;
+    margin: 2cm 1.5cm;
+    @top-center {
+        content: "Observator — UAE Labour Market Intelligence";
+        font-size: 8pt;
+        color: #666;
+        font-family: Inter, sans-serif;
+    }
+    @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+        font-size: 8pt;
+        color: #666;
+        font-family: Inter, sans-serif;
+    }
+    @bottom-right {
+        content: "CONFIDENTIAL";
+        font-size: 7pt;
+        color: #999;
+        font-family: Inter, sans-serif;
+    }
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Inter, -apple-system, sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1a1a2e;
+}
+
+/* RTL Arabic support */
+[dir="rtl"], .rtl {
+    direction: rtl;
+    font-family: Tajawal, sans-serif;
+}
+
+/* Header */
+.report-header {
+    background: #003366;
+    color: white;
+    padding: 30px;
+    margin: -2cm -1.5cm 20px -1.5cm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.report-header h1 {
+    font-size: 22pt;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.report-header .subtitle {
+    font-size: 11pt;
+    color: #C9A84C;
+    font-weight: 500;
+}
+
+.report-header .meta {
+    text-align: right;
+    font-size: 9pt;
+    color: #8abce0;
+}
+
+.report-header .meta strong {
+    color: #C9A84C;
+}
+
+/* Section headers */
+h2 {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #003366;
+    border-bottom: 2px solid #C9A84C;
+    padding-bottom: 6px;
+    margin: 20px 0 12px 0;
+}
+
+h3 {
+    font-size: 11pt;
+    font-weight: 600;
+    color: #003366;
+    margin: 15px 0 8px 0;
+}
+
+/* KPI cards */
+.kpi-grid {
+    display: flex;
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.kpi-card {
+    flex: 1;
+    background: #f8f9fa;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.kpi-card .label {
+    font-size: 8pt;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.kpi-card .value {
+    font-size: 20pt;
+    font-weight: 700;
+    color: #003366;
+    margin: 4px 0;
+}
+
+.kpi-card .change {
+    font-size: 8pt;
+    font-weight: 500;
+}
+
+.kpi-card .change.positive { color: #00875A; }
+.kpi-card .change.negative { color: #DE350B; }
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 9pt;
+}
+
+thead th {
+    background: #003366;
+    color: white;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+tbody td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+tbody tr:nth-child(even) {
+    background: #f8f9fa;
+}
+
+tbody tr:hover {
+    background: #e8f4f8;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 8pt;
+    font-weight: 600;
+}
+
+.badge-critical { background: #fde8e5; color: #DE350B; }
+.badge-shortage { background: #fff3e0; color: #FFAB00; }
+.badge-balanced { background: #e3fcef; color: #00875A; }
+.badge-surplus  { background: #e3f2fd; color: #0052CC; }
+
+/* Risk levels */
+.risk-high { color: #DE350B; font-weight: 700; }
+.risk-medium { color: #FFAB00; font-weight: 600; }
+.risk-low { color: #00875A; font-weight: 600; }
+
+/* Bar charts (CSS-only) */
+.bar-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bar {
+    height: 14px;
+    border-radius: 3px;
+    min-width: 2px;
+}
+
+.bar-supply { background: #007DB5; }
+.bar-demand { background: #C9A84C; }
+.bar-gap    { background: #DE350B; }
+.bar-exposure { background: #003366; }
+
+.bar-label {
+    font-size: 8pt;
+    color: #666;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* Summary box */
+.summary-box {
+    background: linear-gradient(135deg, #003366 0%, #004d99 100%);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 15px 0;
+}
+
+.summary-box h3 {
+    color: #C9A84C;
+    margin: 0 0 8px 0;
+}
+
+.summary-box p {
+    font-size: 9pt;
+    line-height: 1.6;
+    color: #d0e4f5;
+}
+
+/* Footer */
+.report-footer {
+    margin-top: 30px;
+    padding-top: 15px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 8pt;
+    color: #999;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Bilingual section */
+.bilingual {
+    display: flex;
+    gap: 20px;
+}
+
+.bilingual .en { flex: 1; }
+.bilingual .ar { flex: 1; direction: rtl; font-family: Tajawal, sans-serif; }
+
+/* Page break helpers */
+.page-break { page-break-before: always; }
+.no-break { page-break-inside: avoid; }

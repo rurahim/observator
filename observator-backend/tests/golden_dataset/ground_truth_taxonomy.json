@@ -1,0 +1,131 @@
+{
+  "esco_occupations_total": 3043,
+  "esco_occupations_with_arabic": 3043,
+  "esco_skills_total": 13960,
+  "esco_skills_with_arabic": 13960,
+  "esco_map_total": 126051,
+  "esco_essential_count": 67600,
+  "esco_optional_count": 58451,
+  "esco_unique_occupations_in_map": 3039,
+  "esco_unique_skills_in_map": 13475,
+  "esco_software_developer_essential_count": 24,
+  "esco_software_developer_essential_skills": [
+    "ICT debugging tools",
+    "analyse software specifications",
+    "computer programming",
+    "create flowchart diagram",
+    "debug software",
+    "define technical requirements",
+    "develop automated migration methods",
+    "develop software prototype",
+    "engineering principles",
+    "engineering processes",
+    "identify customer requirements",
+    "integrated development environment software",
+    "interpret technical requirements",
+    "manage engineering project",
+    "perform scientific research",
+    "project management",
+    "technical drawings",
+    "tools for software configuration management",
+    "use an application-specific interface",
+    "use software design patterns",
+    "use software libraries",
+    "use technical drawing software",
+    "utilise computer-aided software engineering tools",
+    "web services"
+  ],
+  "esco_data_analyst_essential_count": 36,
+  "esco_accountant_essential_count": 26,
+  "esco_top10_occ_by_essential": {
+    "clinical psychologist": 99,
+    "biomedical scientist": 98,
+    "music therapist": 96,
+    "nurse responsible for general care": 92,
+    "physiotherapist": 90,
+    "health psychologist": 82,
+    "powertrain engineer": 81,
+    "dietitian": 81,
+    "education welfare officer": 77,
+    "mental health social worker": 76
+  },
+  "esco_top10_common_essential_skills": {
+    "manage staff": 261,
+    "quality standards": 248,
+    "troubleshoot": 246,
+    "create solutions to problems": 244,
+    "have computer literacy": 238,
+    "adhere to organisational guidelines": 231,
+    "manage budgets": 197,
+    "use different communication channels": 193,
+    "identify customer's needs": 192,
+    "wear appropriate protective gear": 157
+  },
+  "esco_isco_groups": 619,
+  "esco_digital_skills": 1284,
+  "esco_green_share": 3590,
+  "esco_skill_types": {
+    "skill/competence": 10734,
+    "knowledge": 3221,
+    "": 5
+  },
+  "esco_reuse_levels": {
+    "sector-specific": 6667,
+    "occupation-specific": 3047,
+    "cross-sector": 3788,
+    "transversal": 453,
+    "": 5
+  },
+  "onet_occupations_total": 1016,
+  "onet_skills_total": 62580,
+  "onet_unique_skill_elements": 35,
+  "onet_software_dev_top10_skills": [
+    {
+      "name": "Programming",
+      "importance": 4.0
+    },
+    {
+      "name": "Critical Thinking",
+      "importance": 3.88
+    },
+    {
+      "name": "Judgment and Decision Making",
+      "importance": 3.62
+    },
+    {
+      "name": "Reading Comprehension",
+      "importance": 3.5
+    },
+    {
+      "name": "Active Learning",
+      "importance": 3.5
+    },
+    {
+      "name": "Systems Analysis",
+      "importance": 3.5
+    },
+    {
+      "name": "Active Listening",
+      "importance": 3.38
+    },
+    {
+      "name": "Complex Problem Solving",
+      "importance": 3.38
+    },
+    {
+      "name": "Technology Design",
+      "importance": 3.38
+    },
+    {
+      "name": "Systems Evaluation",
+      "importance": 3.38
+    }
+  ],
+  "onet_tech_total": 32773,
+  "onet_software_dev_tech_count": 429,
+  "onet_software_dev_hot_tech": 148,
+  "onet_hot_tech_total": 11526,
+  "onet_in_demand_total": 2493,
+  "onet_alternate_titles_total": 57543,
+  "onet_software_dev_alt_count": 93
+}

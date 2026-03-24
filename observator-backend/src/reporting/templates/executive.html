@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Executive Summary</h2>
+
+<div class="kpi-grid no-break">
+    <div class="kpi-card">
+        <div class="label">Total Supply</div>
+        <div class="value">{{ "{:,}".format(total_supply) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Total Demand</div>
+        <div class="value">{{ "{:,}".format(total_demand) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Gap</div>
+        <div class="value">{{ "{:,}".format(gap) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">SGI Ratio</div>
+        <div class="value">{{ sgi }}</div>
+    </div>
+</div>
+
+{% if top_shortages %}
+<h2>Top Labour Shortages</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Occupation</th>
+            <th>ISCO</th>
+            <th>Supply</th>
+            <th>Demand</th>
+            <th>Gap</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in top_shortages %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ row.occupation }}</td>
+            <td>{{ row.code_isco or '—' }}</td>
+            <td>{{ "{:,}".format(row.supply) }}</td>
+            <td>{{ "{:,}".format(row.demand) }}</td>
+            <td>{{ "{:,}".format(row.gap) }}</td>
+            <td>
+                {% if row.gap < -1000 %}
+                <span class="badge badge-critical">Critical</span>
+                {% elif row.gap < 0 %}
+                <span class="badge badge-shortage">Shortage</span>
+                {% elif row.gap == 0 %}
+                <span class="badge badge-balanced">Balanced</span>
+                {% else %}
+                <span class="badge badge-surplus">Surplus</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if top_surpluses %}
+<h2>Top Labour Surpluses</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Occupation</th>
+            <th>Supply</th>
+            <th>Demand</th>
+            <th>Gap</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in top_surpluses %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ row.occupation }}</td>
+            <td>{{ "{:,}".format(row.supply) }}</td>
+            <td>{{ "{:,}".format(row.demand) }}</td>
+            <td class="risk-low">+{{ "{:,}".format(row.gap) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if emirate_data %}
+<h2>Regional Overview</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>Emirate</th>
+            <th>Supply</th>
+            <th>Demand</th>
+            <th>Gap</th>
+            <th>SGI</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in emirate_data %}
+        <tr>
+            <td>{{ row.emirate }}</td>
+            <td>{{ "{:,}".format(row.supply) }}</td>
+            <td>{{ "{:,}".format(row.demand) }}</td>
+            <td>{{ "{:,}".format(row.gap) }}</td>
+            <td>{{ row.sgi }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

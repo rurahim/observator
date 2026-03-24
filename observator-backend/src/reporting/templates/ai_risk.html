@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>AI Risk Assessment Report</h2>
+
+<div class="summary-box no-break">
+    <h3>Overview</h3>
+    <p>Analysis of {{ total_assessed }} occupations using three research sources (AIOE, Frey &amp; Osborne, GPTs-are-GPTs).
+    {{ high_risk_count }} occupations show high automation risk (&gt;70%), while {{ low_risk_count }} show low risk (&lt;30%).</p>
+</div>
+
+<div class="kpi-grid no-break">
+    <div class="kpi-card">
+        <div class="label">Occupations Assessed</div>
+        <div class="value">{{ total_assessed }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">High Risk (&gt;70%)</div>
+        <div class="value risk-high">{{ high_risk_count }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Medium Risk (30-70%)</div>
+        <div class="value risk-medium">{{ medium_risk_count }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="label">Low Risk (&lt;30%)</div>
+        <div class="value risk-low">{{ low_risk_count }}</div>
+    </div>
+</div>
+
+{% if top_exposed %}
+<h2>Highest AI Exposure Occupations</h2>
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Occupation</th>
+            <th>ISCO Code</th>
+            <th>AI Exposure</th>
+            <th>Automation Prob.</th>
+            <th>LLM Exposure</th>
+            <th>Risk Level</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in top_exposed %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ row.occupation }}</td>
+            <td>{{ row.code_isco or '—' }}</td>
+            <td>
+                <div class="bar-container">
+                    <div class="bar bar-exposure" style="width: {{ row.exposure|int }}px"></div>
+                    <span class="bar-label">{{ row.exposure }}%</span>
+                </div>
+            </td>
+            <td>{{ "%.1f"|format(row.automation * 100) }}%</td>
+            <td>{{ "%.1f"|format(row.llm_exposure * 100) if row.llm_exposure else '—' }}%</td>
+            <td>
+                {% if row.exposure > 70 %}
+                <span class="badge badge-critical">High</span>
+                {% elif row.exposure > 30 %}
+                <span class="badge badge-shortage">Medium</span>
+                {% else %}
+                <span class="badge badge-balanced">Low</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if lowest_exposed %}
+<h2>Lowest AI Exposure Occupations</h2>
+<table class="no-break">
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>Occupation</th>
+            <th>AI Exposure</th>
+            <th>Risk Level</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in lowest_exposed %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ row.occupation }}</td>
+            <td>{{ row.exposure }}%</td>
+            <td><span class="badge badge-balanced">Low</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% endblock %}

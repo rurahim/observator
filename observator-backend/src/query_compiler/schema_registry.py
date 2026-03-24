@@ -1,0 +1,173 @@
+"""Registry of materialized view schemas — single source of truth for the compiler and LLM tools."""
+
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class ViewColumn:
+    name: str
+    dtype: str  # int, float, str, date
+    filterable: bool = True
+    aggregatable: bool = False
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class ViewSchema:
+    name: str
+    description: str
+    columns: tuple[ViewColumn, ...]
+    default_order: str = ""
+    supports_group_by: bool = True
+
+    @property
+    def column_names(self) -> set[str]:
+        return {c.name for c in self.columns}
+
+    @property
+    def filterable_columns(self) -> set[str]:
+        return {c.name for c in self.columns if c.filterable}
+
+    @property
+    def aggregatable_columns(self) -> set[str]:
+        return {c.name for c in self.columns if c.aggregatable}
+
+    def to_tool_description(self) -> str:
+        """Generate LLM-readable description for tool calling."""
+        cols = "\n".join(
+            f"  - {c.name} ({c.dtype}): {c.description}"
+            for c in self.columns
+        )
+        return f"View: {self.name}\n{self.description}\nColumns:\n{cols}"
+
+
+# --- View definitions ---
+
+VW_SUPPLY_TALENT = ViewSchema(
+    name="vw_supply_talent",
+    description="Aggregated talent supply (workforce) by time, region, occupation, sector, demographics",
+    columns=(
+        ViewColumn("year", "int", description="Calendar year"),
+        ViewColumn("quarter", "int", description="Quarter (1-4)"),
+        ViewColumn("month_label", "str", description="Month label (YYYY-MM)"),
+        ViewColumn("emirate", "str", description="Emirate name"),
+        ViewColumn("region_code", "str", description="Region code (DXB, AUH, SHJ, etc.)"),
+        ViewColumn("occupation", "str", description="Occupation title (English)"),
+        ViewColumn("code_isco", "str", description="ISCO-08 occupation code"),
+        ViewColumn("isco_major_group", "str", description="ISCO major group (1-digit)"),
+        ViewColumn("sector", "str", description="Economic sector"),
+        ViewColumn("gender", "str", description="Gender (Male/Female)"),
+        ViewColumn("education_level", "str", description="Education level"),
+        ViewColumn("nationality", "str", description="Nationality category (citizen/expat)"),
+        ViewColumn("age_group", "str", description="Age group band"),
+        ViewColumn("wage_band", "str", description="Wage band"),
+        ViewColumn("supply_count", "int", aggregatable=True, filterable=False, description="Number of workers"),
+    ),
+    default_order="supply_count DESC",
+)
+
+VW_DEMAND_JOBS = ViewSchema(
+    name="vw_demand_jobs",
+    description="Aggregated job demand (vacancies) by time, region, occupation, sector",
+    columns=(
+        ViewColumn("year", "int", description="Calendar year"),
+        ViewColumn("quarter", "int", description="Quarter (1-4)"),
+        ViewColumn("month_label", "str", description="Month label (YYYY-MM)"),
+        ViewColumn("emirate", "str", description="Emirate name"),
+        ViewColumn("region_code", "str", description="Region code"),
+        ViewColumn("occupation", "str", description="Occupation title (English)"),
+        ViewColumn("code_isco", "str", description="ISCO-08 occupation code"),
+        ViewColumn("sector", "str", description="Economic sector"),
+        ViewColumn("experience_band", "str", description="Experience level band"),
+        ViewColumn("demand_count", "int", aggregatable=True, filterable=False, description="Number of vacancies"),
+    ),
+    default_order="demand_count DESC",
+)
+
+VW_SUPPLY_EDUCATION = ViewSchema(
+    name="vw_supply_education",
+    description="Graduate supply pipeline by institution, discipline, demographics",
+    columns=(
+        ViewColumn("year", "int", description="Graduation year"),
+        ViewColumn("emirate", "str", description="Emirate name"),
+        ViewColumn("region_code", "str", description="Region code"),
+        ViewColumn("institution", "str", description="Institution name"),
+        ViewColumn("institution_type", "str", description="Type of institution"),
+        ViewColumn("discipline", "str", description="Academic discipline"),
+        ViewColumn("code_isced", "str", description="ISCED classification code"),
+        ViewColumn("gender", "str", description="Gender"),
+        ViewColumn("nationality", "str", description="Nationality"),
+        ViewColumn("graduates_count", "int", aggregatable=True, filterable=False, description="Expected graduate count"),
+    ),
+    default_order="graduates_count DESC",
+)
+
+VW_AI_IMPACT = ViewSchema(
+    name="vw_ai_impact",
+    description="AI exposure and automation risk scores per occupation",
+    columns=(
+        ViewColumn("occupation_id", "int", description="Occupation ID"),
+        ViewColumn("occupation", "str", description="Occupation title (English)"),
+        ViewColumn("code_isco", "str", description="ISCO-08 occupation code"),
+        ViewColumn("isco_major_group", "str", description="ISCO major group"),
+        ViewColumn("exposure_z", "float", filterable=False, description="AI exposure z-score"),
+        ViewColumn("exposure_0_100", "float", aggregatable=True, description="AI exposure score (0-100)"),
+        ViewColumn("automation_probability", "float", aggregatable=True, description="Automation probability (0-1)"),
+        ViewColumn("llm_exposure", "float", aggregatable=True, description="LLM exposure score"),
+        ViewColumn("source", "str", description="Data source (AIOE, FreyOsborne, GPTs_are_GPTs)"),
+        ViewColumn("version", "str", description="Dataset version"),
+    ),
+    default_order="exposure_0_100 DESC",
+)
+
+VW_GAP_CUBE = ViewSchema(
+    name="vw_gap_cube",
+    description="Supply vs demand gap analysis with AI exposure, per occupation/region/time",
+    columns=(
+        ViewColumn("year", "int", description="Calendar year"),
+        ViewColumn("quarter", "int", description="Quarter"),
+        ViewColumn("month_label", "str", description="Month label"),
+        ViewColumn("region_code", "str", description="Region code"),
+        ViewColumn("emirate", "str", description="Emirate name"),
+        ViewColumn("occupation", "str", description="Occupation title"),
+        ViewColumn("code_isco", "str", description="ISCO-08 code"),
+        ViewColumn("sector", "str", description="Economic sector"),
+        ViewColumn("gender", "str", description="Gender"),
+        ViewColumn("supply_count", "int", aggregatable=True, filterable=False, description="Supply count"),
+        ViewColumn("demand_count", "int", aggregatable=True, filterable=False, description="Demand count"),
+        ViewColumn("gap_abs", "int", aggregatable=True, filterable=False, description="Absolute gap (supply - demand)"),
+        ViewColumn("gap_ratio", "float", filterable=False, description="Gap ratio (%)"),
+        ViewColumn("ai_exposure_score", "float", filterable=False, description="Average AI exposure (0-100)"),
+    ),
+    default_order="gap_abs DESC",
+)
+
+VW_FORECAST_DEMAND = ViewSchema(
+    name="vw_forecast_demand",
+    description="Demand/supply forecasts with confidence intervals",
+    columns=(
+        ViewColumn("forecast_date", "str", description="Forecast target date (YYYY-MM)"),
+        ViewColumn("horizon_months", "int", description="Forecast horizon in months"),
+        ViewColumn("emirate", "str", description="Emirate"),
+        ViewColumn("region_code", "str", description="Region code"),
+        ViewColumn("occupation", "str", description="Occupation title"),
+        ViewColumn("code_isco", "str", description="ISCO-08 code"),
+        ViewColumn("sector", "str", description="Economic sector"),
+        ViewColumn("predicted_demand", "float", aggregatable=True, filterable=False, description="Predicted demand"),
+        ViewColumn("predicted_supply", "float", aggregatable=True, filterable=False, description="Predicted supply"),
+        ViewColumn("predicted_gap", "float", aggregatable=True, filterable=False, description="Predicted gap"),
+        ViewColumn("confidence_lower", "float", filterable=False, description="Lower confidence bound"),
+        ViewColumn("confidence_upper", "float", filterable=False, description="Upper confidence bound"),
+        ViewColumn("model_name", "str", description="Forecast model name"),
+        ViewColumn("model_version", "str", description="Model version"),
+    ),
+    default_order="forecast_date ASC",
+)
+
+
+VIEW_SCHEMAS: dict[str, ViewSchema] = {
+    vs.name: vs for vs in [
+        VW_SUPPLY_TALENT, VW_DEMAND_JOBS, VW_SUPPLY_EDUCATION,
+        VW_AI_IMPACT, VW_GAP_CUBE, VW_FORECAST_DEMAND,
+    ]
+}
