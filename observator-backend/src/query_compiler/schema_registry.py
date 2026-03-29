@@ -165,9 +165,78 @@ VW_FORECAST_DEMAND = ViewSchema(
 )
 
 
+# ── Supply Dashboard Tables (exposed as queryable "views") ──
+
+TBL_PROGRAM_ENROLLMENT = ViewSchema(
+    name="fact_program_enrollment",
+    description="Higher education enrollment data by year, emirate, sector (gov/private), gender, nationality, specialization. Contains actual counts and estimated data with source tracking.",
+    columns=(
+        ViewColumn("year", "int", description="Academic year"),
+        ViewColumn("region_code", "str", description="Emirate code (AUH, DXB, SHJ, AJM, RAK, FUJ, UAQ)"),
+        ViewColumn("sector", "str", description="Government or private"),
+        ViewColumn("gender", "str", description="M or F"),
+        ViewColumn("nationality", "str", description="citizen or expat"),
+        ViewColumn("specialization", "str", description="Field of study (Engineering, Business & Economics, IT, Health, Education, etc.)"),
+        ViewColumn("enrollment_count", "int", aggregatable=True, filterable=False, description="Number of enrolled students"),
+        ViewColumn("is_estimated", "str", description="true if data is estimated, false if actual"),
+        ViewColumn("data_type", "str", description="actual, estimated, actual_partial, or percentage"),
+        ViewColumn("source", "str", description="Data source (bayanat_emirate_sector, bayanat_gov_specialty, CEIC, etc.)"),
+    ),
+    default_order="enrollment_count DESC",
+)
+
+TBL_GRADUATE_OUTCOMES = ViewSchema(
+    name="fact_graduate_outcomes",
+    description="Graduate data by year, institution, college, degree level, specialization, gender, nationality, STEM indicator. Has actual counts for UAEU and by specialty, percentages for other institutions.",
+    columns=(
+        ViewColumn("year", "int", description="Graduation year"),
+        ViewColumn("region_code", "str", description="Emirate code"),
+        ViewColumn("college", "str", description="College name (for UAEU: Business & Economics, Engineering, etc.)"),
+        ViewColumn("degree_level", "str", description="Undergraduate, Master, Doctorate"),
+        ViewColumn("specialization", "str", description="Field of study"),
+        ViewColumn("stem_indicator", "str", description="STEM category: S, T, E, M, NS (non-STEM), or S,M"),
+        ViewColumn("gender", "str", description="M or F"),
+        ViewColumn("nationality", "str", description="citizen or expat"),
+        ViewColumn("graduate_count", "int", aggregatable=True, filterable=False, description="Number of graduates (actual count)"),
+        ViewColumn("graduate_pct", "float", aggregatable=True, filterable=False, description="Graduate percentage (when count unavailable)"),
+        ViewColumn("source", "str", description="Data source"),
+    ),
+    default_order="graduate_count DESC",
+)
+
+TBL_PROGRAMS = ViewSchema(
+    name="dim_program",
+    description="Academic programs offered by UAE institutions — 3,433 programs from CAA + scraped university websites. Columns: program_name, degree_level, specialization (field), college, institution_id, source.",
+    columns=(
+        ViewColumn("program_name", "str", description="Full program name"),
+        ViewColumn("degree_level", "str", description="Bachelor, Master, PhD, Diploma, Certificate, PG Diploma, Foundation"),
+        ViewColumn("specialization", "str", description="Field of study (Business/Management, Engineering, Health Sciences, Comp.Sci/IT, etc.)"),
+        ViewColumn("college", "str", description="College/department within institution"),
+        ViewColumn("institution_id", "int", description="FK to dim_institution"),
+        ViewColumn("source", "str", description="caa_accredited or web_scrape"),
+    ),
+    default_order="program_name",
+)
+
+TBL_INSTITUTIONS = ViewSchema(
+    name="dim_institution",
+    description="UAE higher education institutions — 168 total with names (EN/AR), emirate, type, website, GPS coordinates.",
+    columns=(
+        ViewColumn("name_en", "str", description="Institution name in English"),
+        ViewColumn("name_ar", "str", description="Institution name in Arabic"),
+        ViewColumn("emirate", "str", description="Emirate name"),
+        ViewColumn("institution_type", "str", description="Institution type"),
+        ViewColumn("website", "str", description="Institution website URL"),
+        ViewColumn("license_status", "str", description="CAA license status (Active)"),
+    ),
+    default_order="name_en",
+)
+
+
 VIEW_SCHEMAS: dict[str, ViewSchema] = {
     vs.name: vs for vs in [
         VW_SUPPLY_TALENT, VW_DEMAND_JOBS, VW_SUPPLY_EDUCATION,
         VW_AI_IMPACT, VW_GAP_CUBE, VW_FORECAST_DEMAND,
+        TBL_PROGRAM_ENROLLMENT, TBL_GRADUATE_OUTCOMES, TBL_PROGRAMS, TBL_INSTITUTIONS,
     ]
 }

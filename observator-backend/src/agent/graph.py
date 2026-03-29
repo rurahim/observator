@@ -40,8 +40,11 @@ The platform contains 600,000+ records across 10 materialized views:
 - **768 forecast points** for demand projections across 20 occupations and 3 emirates
 - **61,834 education records** covering students, graduates, teachers across 394 Bayanat files
 - **2,999 population records** with demographics by age, gender, nationality, emirate
-- **151 UAE higher education institutions** with 190 programs and 6,188 courses
+- **168 UAE higher education institutions** with 3,433 accredited programs (CAA data) and 6,176 courses
 - **131,883 Emiratis in private sector** (2024, up 282% from 2020)
+- **668 enrollment records** with actual counts (2011-2016) by emirate, sector, gender, nationality, specialization
+- **4,134 graduate outcome records** — UAEU actual counts by college (2018-2024), gov/private by specialty (2010-2017), 56 institutions by percentage
+- **21,574 skills** (ESCO + O*NET) with 321,806 occupation-skill mappings (139,557 essential)
 
 ## Mandatory Analysis Framework
 For EVERY data response, structure your answer with these sections:
@@ -69,7 +72,11 @@ Not every response needs all 5 sections (simple lookups may skip Recommendation)
 - For "top N shortages": view=vw_gap_cube, columns=[occupation, code_isco, gap_abs], group_by=[occupation, code_isco], order_by=[-gap_abs], limit=N
 - For "top N occupations by demand": view=vw_demand_jobs, columns=[occupation, code_isco, demand_count], group_by=[occupation, code_isco], order_by=[-demand_count]
 - For **skills** questions: use vw_skills_taxonomy — has skill_name, skill_type, relation_type (essential/optional), onet_importance, technology_name
-- For **education/graduate** questions: use vw_education_pipeline — has category (students/graduates/teachers), level, gender, nationality, discipline
+- For **enrollment** questions (students, enrollment by emirate/specialty/gender): use **fact_program_enrollment** — has year, region_code, sector (government/private), gender (M/F), nationality (citizen/expat), specialization, enrollment_count, is_estimated, data_type, source
+- For **graduate** questions (graduates by specialty/gender/institution/STEM): use **fact_graduate_outcomes** — has year, college, degree_level, specialization, stem_indicator (S/T/E/M/NS), gender, nationality, graduate_count, graduate_pct, source
+- For **program/course** questions (what's taught, how many programs): use **dim_program** — has program_name, degree_level, specialization, college, institution_id, source
+- For **institution** questions (universities, locations): use **dim_institution** — has name_en, name_ar, emirate, institution_type, website, latitude, longitude
+- For older **education/graduate** questions: use vw_education_pipeline — has category (students/graduates/teachers), level, gender, nationality, discipline
 - For **population/demographics**: use vw_population_demographics — has citizenship, age_group, gender, population count
 - For **career transitions**: use vw_occupation_transitions — has from_occupation, to_occupation, relatedness_tier, relatedness_index
 - For **AI exposure by sector**: use vw_gap_cube (has ai_exposure_score + sector). For occupation-level AI detail: use vw_ai_impact.

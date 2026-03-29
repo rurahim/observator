@@ -34,12 +34,16 @@ ALLOWED_VIEWS = {
     "vw_ai_impact", "vw_gap_cube", "vw_forecast_demand",
     "vw_skills_taxonomy", "vw_education_pipeline",
     "vw_population_demographics", "vw_occupation_transitions",
+    # Supply dashboard tables
+    "fact_program_enrollment", "fact_graduate_outcomes",
+    "dim_program", "dim_institution",
 }
 SAFE_IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
 SUM_COLUMNS = {
     "supply_count", "demand_count", "gap_abs", "predicted_demand",
     "predicted_supply", "predicted_gap", "graduates_count",
     "total_count", "population", "onet_importance",
+    "enrollment_count", "graduate_count",
 }
 AVG_COLUMNS = {
     "exposure_0_100", "automation_probability", "llm_exposure",

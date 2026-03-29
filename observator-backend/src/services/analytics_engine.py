@@ -637,14 +637,12 @@ class AnalyticsEngine:
     @staticmethod
     def _risk_level(score: float | None) -> str:
         if score is None:
-            return "low"
-        if score >= 75:
-            return "critical"
-        if score >= 50:
-            return "high"
-        if score >= 25:
-            return "medium"
-        return "low"
+            return "Low"
+        if score >= 60:
+            return "High"
+        if score >= 30:
+            return "Moderate"
+        return "Low"
 
     @staticmethod
     def _source_condition(data_source: str | None) -> str:

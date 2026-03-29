@@ -15,11 +15,17 @@ interface State {
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, showDetails: false };
+    this.state = { hasError: false, error: null, showDetails: true };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ErrorBoundary] Caught error:', error.message);
+    console.error('[ErrorBoundary] Stack:', error.stack);
+    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
   }
 
   handleRetry = () => {
@@ -40,6 +46,14 @@ class ErrorBoundary extends Component<Props, State> {
             <p className="text-xs text-text-muted mb-4 max-w-xs">
               This section encountered an error. You can try reloading it.
             </p>
+            {this.state.error && (
+              <div className="mb-4 w-full p-3 rounded-lg bg-red-50 border border-red-200 text-left">
+                <p className="text-xs font-mono text-red-700 break-all">{this.state.error.message}</p>
+                <p className="text-[10px] font-mono text-red-500 mt-1 break-all whitespace-pre-wrap">
+                  {this.state.error.stack?.split('\n').slice(1, 5).join('\n')}
+                </p>
+              </div>
+            )}
             <button
               onClick={this.handleRetry}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-navy text-primary-foreground text-xs font-medium hover:bg-navy-dark transition-colors"
@@ -48,24 +62,6 @@ class ErrorBoundary extends Component<Props, State> {
               Retry
             </button>
 
-            {this.state.error && (
-              <div className="mt-4 w-full text-left">
-                <button
-                  onClick={() => this.setState(s => ({ showDetails: !s.showDetails }))}
-                  className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text-secondary"
-                >
-                  {this.state.showDetails ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  Error details
-                </button>
-                {this.state.showDetails && (
-                  <pre className="mt-2 p-3 rounded-lg bg-surface-tertiary text-[10px] text-sgi-critical font-mono overflow-x-auto max-h-32">
-                    {this.state.error.message}
-                    {'\n'}
-                    {this.state.error.stack?.split('\n').slice(1, 4).join('\n')}
-                  </pre>
-                )}
-              </div>
-            )}
           </div>
         </div>
       );

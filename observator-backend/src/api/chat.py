@@ -32,8 +32,19 @@ async def chat(
     if settings.OPENAI_API_KEY:
         try:
             from src.agent.executor import run_agent
+            # Build enhanced message with self-knowledge context if enabled
+            enhanced_message = body.message
+            if body.self_knowledge:
+                enhanced_message = (
+                    "[SELF-KNOWLEDGE MODE ENABLED: You may use your training knowledge to supplement database data. "
+                    "Clearly label any information from your own knowledge vs verified database data. "
+                    "You can estimate, predict, and reason about skills, AI impact, and labour market trends "
+                    "even when exact data is unavailable — but always disclose when you're using estimation.]\n\n"
+                    + body.message
+                )
+
             agent_result = await run_agent(
-                message=body.message,
+                message=enhanced_message,
                 user_id=str(user.user_id),
                 session_id=str(session_id),
                 db=db,

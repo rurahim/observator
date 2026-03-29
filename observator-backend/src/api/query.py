@@ -19,6 +19,8 @@ ALLOWED_VIEWS = {
     "vw_ai_impact", "vw_gap_cube", "vw_forecast_demand",
     "vw_skills_taxonomy", "vw_education_pipeline",
     "vw_population_demographics", "vw_occupation_transitions",
+    "fact_program_enrollment", "fact_graduate_outcomes",
+    "dim_program", "dim_institution",
 }
 
 # Only allow safe SQL identifiers

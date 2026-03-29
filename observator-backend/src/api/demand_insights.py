@@ -92,22 +92,31 @@ def _parse_csv() -> dict:
         for ind, cnt in ind_counter.most_common(15)
     ]
 
-    # Employment type distribution
+    # Employment type distribution — only keep known types, skip URLs/garbage
+    VALID_EMP_TYPES = {
+        "full-time", "part-time", "contract", "temporary", "internship",
+        "volunteer", "other", "freelance", "remote",
+    }
     emp_counter: Counter = Counter()
     for r in rows:
-        emp = r.get("employment_type", "").strip()
-        if emp:
+        emp = r.get("employment_type", "").strip().strip("'\"")
+        if emp and emp.lower() in VALID_EMP_TYPES:
             emp_counter[emp] += 1
     employment_types = [
         {"type": t, "count": c, "pct": round(c / total * 100, 1)}
         for t, c in emp_counter.most_common()
     ]
 
-    # Experience level distribution
+    # Experience level distribution — only keep known levels, skip dates/garbage
+    VALID_EXP_LEVELS = {
+        "entry level", "mid-senior level", "associate", "director",
+        "executive", "internship", "not applicable", "senior", "junior",
+        "mid-level", "lead", "manager", "staff",
+    }
     exp_counter: Counter = Counter()
     for r in rows:
         exp = r.get("experience", "").strip()
-        if exp:
+        if exp and exp.lower() in VALID_EXP_LEVELS:
             exp_counter[exp] += 1
     experience_levels = [
         {"level": lv, "count": c, "pct": round(c / total * 100, 1)}

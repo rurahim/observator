@@ -29,6 +29,10 @@ from src.api.demand_insights import router as demand_insights_router
 from src.api.demographics import router as demographics_router
 from src.api.education_pipeline import router as education_pipeline_router
 from src.api.transitions import router as transitions_router
+from src.api.supply_dashboard import router as supply_dashboard_router
+from src.api.knowledge_base import router as knowledge_base_router
+from src.api.skill_matching import router as skill_matching_router
+from src.api.explorer import router as explorer_router
 from src.config import settings
 from src.dependencies import get_engine, get_minio, get_qdrant, get_redis
 
@@ -161,5 +165,9 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(pipeline_router)
     app.include_router(scheduler_router)
+    app.include_router(supply_dashboard_router)
+    app.include_router(knowledge_base_router)
+    app.include_router(skill_matching_router)
+    app.include_router(explorer_router)
 
     return app

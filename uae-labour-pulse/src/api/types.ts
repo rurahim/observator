@@ -267,6 +267,40 @@ export interface UniversityResponse {
   summary: Record<string, unknown>;
 }
 
+// --- Supply Dashboard ---
+export interface SupplyDashboardResponse {
+  kpis: {
+    total_institutions: number;
+    total_programs: number;
+    total_enrolled: number;
+    total_graduates: number;
+  };
+  enrollment_trend: { year: number; enrollment: number; is_estimated: boolean; sources: string[] }[];
+  by_emirate: { region_code: string; emirate: string; enrollment: number }[];
+  by_specialty: { specialization: string; enrollment: number; data_type: string }[];
+  by_gender: Record<string, number>;
+  program_distribution: { degree_level: string; count: number }[];
+  institution_ranking: {
+    institution: string; emirate: string; sector: string;
+    programs: number; graduates: number; latitude: number | null; longitude: number | null;
+  }[];
+  graduate_trend: { year: number; graduates: number; is_estimated: boolean }[];
+  stem_split: { indicator: string; count: number }[];
+  workforce_alignment: { occupation: string; code_isco: string; supply: number; demand: number; gap: number }[];
+  sources: { source: string; rows: number; category: string }[];
+}
+
+export interface DataExplorerResponse {
+  table: string;
+  db_table: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total: number;
+  limit: number;
+  offset: number;
+  available_sources: string[];
+}
+
 // --- Admin ---
 export interface AdminUser {
   user_id: string;
@@ -453,6 +487,50 @@ export interface SkillGapPathway {
   skills_to_acquire: string[];
   transferable_skills: string[];
   transition_difficulty: string;
+}
+
+// --- Knowledge Base ---
+export interface KBTableInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  row_count: number;
+  column_count: number;
+  category: string;
+}
+
+export interface KBCategory {
+  name: string;
+  icon: string;
+  tables: KBTableInfo[];
+}
+
+export interface KBTablesResponse {
+  categories: KBCategory[];
+  total_tables: number;
+  total_rows: number;
+}
+
+export interface KBColumnDef {
+  name: string;
+  type: string;
+}
+
+export interface KBBrowseResponse {
+  table: string;
+  display_name: string;
+  columns: KBColumnDef[];
+  rows: Record<string, unknown>[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface KBStatsResponse {
+  total_tables: number;
+  total_rows: number;
+  categories: { name: string; tables: number; rows: number }[];
+  data_sources: number;
 }
 
 // --- Data Explorer ---

@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     selected_files: list[str] | None = None
     page_context: str | None = None
     internet_search: bool = False
+    self_knowledge: bool = False
     upload_context: dict | None = None
 
 

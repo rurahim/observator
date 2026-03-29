@@ -44,7 +44,7 @@ const AppLayout = () => {
       >
         <div className="p-4 lg:p-6">
           <Breadcrumbs />
-          <ErrorBoundary>
+          <ErrorBoundary key={location.pathname}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}

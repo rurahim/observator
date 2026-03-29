@@ -46,8 +46,14 @@ src/
 └── reporting/              # WeasyPrint + Jinja2 PDF (4 templates), email delivery
 ```
 
-### Frontend Pages (13 routes, all lazy-loaded except Dashboard)
-`/login` `/` `/skill-gap` `/ai-impact` `/forecast` `/chat` `/knowledge-base` `/reports` `/university` `/agents` `/admin` `/settings`
+### Frontend Pages (14 routes, all lazy-loaded except Dashboard)
+`/login` `/` `/skill-gap` `/ai-impact` `/forecast` `/chat` `/knowledge-base` `/reports` `/university` (Supply Dashboard) `/agents` `/admin` `/data-explorer` `/settings`
+
+### Supply-Side Data (`refined_data/`)
+56 CSV files, ~31,825 rows from Bayanat, SCAD, web scraping (20 universities), MOHRE, CAA.
+New tables: `dim_program`, `fact_program_enrollment`, `fact_graduate_outcomes`.
+Seed script: `scripts/seed_supply_data.py`. API: `/api/supply-dashboard`.
+All data has source tracking (`source` column) and estimation flags (`is_estimated`).
 
 ## 4. Development Setup
 

@@ -100,3 +100,42 @@ async def get_ai_impact(
     await cache.set(cache_key, result.model_dump(), ttl=3600)
 
     return result
+
+
+@router.get("/anthropic-index")
+async def get_anthropic_index(user=Depends(get_current_user)):
+    """Anthropic Economic Index — observed AI exposure from real Claude usage data."""
+    import json
+    from pathlib import Path
+    base = Path(__file__).resolve().parents[3] / "_master_tables" / "6_ai_impact"
+    fp = base / "anthropic_combined_analysis.json"
+    if not fp.exists():
+        fp = Path("/app/_master_tables/6_ai_impact/anthropic_combined_analysis.json")
+    if not fp.exists():
+        return {"occupations": [], "families": [], "radar": [], "summary": {}}
+    with open(fp) as f:
+        data = json.load(f)
+    # Attach radar data if available
+    radar_fp = base / "radar_family_data.json"
+    if not radar_fp.exists():
+        radar_fp = Path("/app/_master_tables/6_ai_impact/radar_family_data.json")
+    if radar_fp.exists():
+        with open(radar_fp) as rf:
+            data["radar"] = json.load(rf)
+    else:
+        data["radar"] = []
+    return data
+
+
+@router.get("/taxonomy")
+async def get_ai_taxonomy(user=Depends(get_current_user)):
+    """Interactive AI taxonomy — families > occupations > skills with AI impact scores."""
+    import json
+    from pathlib import Path
+    fp = Path(__file__).resolve().parents[3] / "_master_tables" / "6_ai_impact" / "ai_taxonomy_hierarchy.json"
+    if not fp.exists():
+        fp = Path("/app/_master_tables/6_ai_impact/ai_taxonomy_hierarchy.json")
+    if not fp.exists():
+        return {"taxonomy": [], "summary": {}}
+    with open(fp) as f:
+        return json.load(f)

@@ -31,6 +31,8 @@ import type {
   SkillsTaxonomyResponse,
   TransitionsResponse,
   UniversityResponse,
+  SupplyDashboardResponse,
+  DataExplorerResponse,
 } from "./types";
 
 // --- Dashboard ---
@@ -45,7 +47,7 @@ export function useDashboardSummary(params?: {
   return useQuery({
     queryKey: ["dashboard-summary", params],
     queryFn: () => api.get<DashboardSummary>("/dashboards/summary", params as any),
-    staleTime: 15_000, // 15s — short enough to pick up pipeline data quickly
+    staleTime: 60_000, // 15s — short enough to pick up pipeline data quickly
   });
 }
 
@@ -65,17 +67,33 @@ export function useSkillGap(params?: { emirate?: string; sector?: string; limit?
   return useQuery({
     queryKey: ["skill-gap", params],
     queryFn: () => api.get<SkillGapResponse>("/skill-gap", params as any),
-    staleTime: 15_000,
+    staleTime: 60_000,
   });
 }
 
 // --- AI Impact ---
 
+export function useAnthropicIndex() {
+  return useQuery({
+    queryKey: ["anthropic-index"],
+    queryFn: () => api.get<any>("/ai-impact/anthropic-index"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useAITaxonomy() {
+  return useQuery({
+    queryKey: ["ai-taxonomy"],
+    queryFn: () => api.get<any>("/ai-impact/taxonomy"),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useAIImpact(params?: { sector?: string; limit?: number }) {
   return useQuery({
     queryKey: ["ai-impact", params],
     queryFn: () => api.get<AIImpactResponse>("/ai-impact", params as any),
-    staleTime: 15_000,
+    staleTime: 60_000,
   });
 }
 
@@ -90,7 +108,7 @@ export function useForecasts(params?: {
   return useQuery({
     queryKey: ["forecasts", params],
     queryFn: () => api.get<ForecastResponse[]>("/forecasts", params as any),
-    staleTime: 15_000,
+    staleTime: 60_000,
   });
 }
 
@@ -290,6 +308,29 @@ export function useUniversity(params?: { emirate?: string; institution_id?: numb
     queryKey: ["university", params],
     queryFn: () => api.get<UniversityResponse>("/university", params as any),
     staleTime: 60_000,
+  });
+}
+
+// --- Supply Dashboard ---
+
+export function useSupplyDashboard(params?: {
+  emirate?: string; year_from?: number; year_to?: number; sector?: string;
+}) {
+  return useQuery({
+    queryKey: ["supply-dashboard", params],
+    queryFn: () => api.get<SupplyDashboardResponse>("/supply-dashboard", params as any),
+    staleTime: 60_000,
+  });
+}
+
+export function useSupplyDataExplorer(params: {
+  table: string; source?: string; limit?: number; offset?: number;
+}) {
+  return useQuery({
+    queryKey: ["supply-data-explorer", params],
+    queryFn: () => api.get<DataExplorerResponse>("/supply-dashboard/data-explorer", params as any),
+    staleTime: 30_000,
+    enabled: !!params.table,
   });
 }
 
@@ -568,6 +609,105 @@ export function useFetchSalaries() {
   });
 }
 
+// --- Knowledge Base ---
+
+export function useKBTables() {
+  return useQuery({
+    queryKey: ["kb-tables"],
+    queryFn: () => api.get<import("./types").KBTablesResponse>("/knowledge-base/tables"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useKBBrowse(params: {
+  table: string;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  search?: string;
+}) {
+  return useQuery({
+    queryKey: ["kb-browse", params],
+    queryFn: () => api.get<import("./types").KBBrowseResponse>("/knowledge-base/browse", params as any),
+    staleTime: 60_000,
+    enabled: !!params.table,
+  });
+}
+
+export function useKBStats() {
+  return useQuery({
+    queryKey: ["kb-stats"],
+    queryFn: () => api.get<import("./types").KBStatsResponse>("/knowledge-base/stats"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// --- Skill Matching ---
+
+export function useSkillMatchingSummary() {
+  return useQuery({
+    queryKey: ["skill-matching-summary"],
+    queryFn: () => api.get<any>("/skill-matching/summary"),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSkillGaps(params?: { limit?: number; min_demand?: number }) {
+  return useQuery({
+    queryKey: ["skill-gaps", params],
+    queryFn: () => api.get<any>("/skill-matching/gaps", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useDemandedSkills(params?: { limit?: number }) {
+  return useQuery({
+    queryKey: ["demanded-skills", params],
+    queryFn: () => api.get<any>("/skill-matching/demanded-skills", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useSuppliedSkills(params?: { limit?: number }) {
+  return useQuery({
+    queryKey: ["supplied-skills", params],
+    queryFn: () => api.get<any>("/skill-matching/supplied-skills", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
+// --- Explorer ---
+
+export function useExplorerFilters() {
+  return useQuery({ queryKey: ["explorer-filters"], queryFn: () => api.get<any>("/explorer/filters"), staleTime: 5 * 60_000 });
+}
+export function useExplorerByInstitution(params?: any) {
+  return useQuery({ queryKey: ["explorer-institution", params], queryFn: () => api.get<any>("/explorer/by-institution", params), staleTime: 60_000, enabled: true });
+}
+export function useExplorerByProgram(params?: any) {
+  return useQuery({ queryKey: ["explorer-program", params], queryFn: () => api.get<any>("/explorer/by-program", params), staleTime: 60_000 });
+}
+export function useExplorerBySkill(params?: any) {
+  return useQuery({ queryKey: ["explorer-skill", params], queryFn: () => api.get<any>("/explorer/by-skill", params), staleTime: 60_000 });
+}
+export function useExplorerByOccupation(params?: any) {
+  return useQuery({ queryKey: ["explorer-occupation", params], queryFn: () => api.get<any>("/explorer/by-occupation", params), staleTime: 60_000 });
+}
+export function useExplorerByRegion() {
+  return useQuery({ queryKey: ["explorer-region"], queryFn: () => api.get<any>("/explorer/by-region"), staleTime: 60_000 });
+}
+export function useExplorerSkillDetail(skillId: number | null) {
+  return useQuery({ queryKey: ["explorer-skill-detail", skillId], queryFn: () => api.get<any>(`/explorer/skill-detail/${skillId}`), staleTime: 60_000, enabled: !!skillId });
+}
+
+export function useSkillComparison(params?: { limit?: number }) {
+  return useQuery({
+    queryKey: ["skill-comparison", params],
+    queryFn: () => api.get<any>("/skill-matching/comparison", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
 // --- Data Explorer ---
 export function useViewSchemas() {
   return useQuery({
@@ -590,7 +730,7 @@ export function useExploreView(params: {
   return useQuery({
     queryKey: ["explore", params],
     queryFn: () => api.get<import("./types").ExploreResponse>("/query/explore", params as any),
-    staleTime: 15_000,
+    staleTime: 60_000,
     enabled: !!params.view,
   });
 }

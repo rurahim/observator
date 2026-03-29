@@ -1,6 +1,6 @@
 from datetime import date as date_type
 
-from sqlalchemy import String, Text, UniqueConstraint
+from sqlalchemy import Float, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,6 +79,10 @@ class DimInstitution(Base):
     name_ar: Mapped[str | None] = mapped_column(String(300))
     emirate: Mapped[str | None] = mapped_column(String(50))
     institution_type: Mapped[str | None] = mapped_column(String(50))
+    website: Mapped[str | None] = mapped_column(String(300))
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    license_status: Mapped[str | None] = mapped_column(String(30))
 
 
 class SdmxCodeLookup(Base):

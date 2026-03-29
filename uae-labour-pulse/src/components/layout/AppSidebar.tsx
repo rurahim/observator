@@ -2,9 +2,8 @@ import { useLocation, Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  LayoutDashboard, BarChart3, TrendingUp, MessageSquare,
-  FileText, GraduationCap, Cpu, Settings, Activity, ChevronLeft,
-  Database, Brain, Sliders, LogOut, Layers, Table2
+  LayoutDashboard, Users, Briefcase, BarChart3, Activity, ChevronLeft,
+  Database, Brain, LogOut, Search,
 } from 'lucide-react';
 
 interface AppSidebarProps {
@@ -14,19 +13,10 @@ interface AppSidebarProps {
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, en: 'Dashboard', ar: 'لوحة القيادة' },
-  { path: '/skill-gap', icon: BarChart3, en: 'Skill Gap', ar: 'فجوة المهارات' },
-  { path: '/ai-impact', icon: Brain, en: 'AI Impact', ar: 'تأثير الذكاء' },
-  { path: '/skills-taxonomy', icon: Layers, en: 'Skills Taxonomy', ar: 'تصنيف المهارات' },
-  { path: '/forecast', icon: TrendingUp, en: 'Forecasts', ar: 'التوقعات' },
-  { path: '/chat', icon: MessageSquare, en: 'AI Query', ar: 'استعلام الذكاء' },
+  { path: '/supply', icon: Users, en: 'Supply Side', ar: 'جانب العرض' },
+  { path: '/demand', icon: Briefcase, en: 'Demand Side', ar: 'جانب الطلب' },
   { path: '/knowledge-base', icon: Database, en: 'Knowledge Base', ar: 'قاعدة المعرفة' },
-  { path: '/reports', icon: FileText, en: 'Reports', ar: 'التقارير' },
-  { path: '/university', icon: GraduationCap, en: 'University', ar: 'الجامعات' },
-  { path: '/agents', icon: Cpu, en: 'Pipeline Monitor', ar: 'مراقبة الأنابيب' },
-  { path: '/admin', icon: Settings, en: 'Admin', ar: 'الإدارة' },
-  { path: '/data-explorer', icon: Table2, en: 'Data Explorer', ar: 'مستكشف البيانات' },
-  { path: '/data-landscape', icon: Database, en: 'Data Landscape', ar: 'المشهد البياني' },
-  { path: '/settings', icon: Sliders, en: 'Settings', ar: 'الإعدادات' },
+  { path: '/ai-impact', icon: Brain, en: 'AI Impact', ar: 'تأثير الذكاء الاصطناعي' },
 ];
 
 const AppSidebar = ({ collapsed, onCollapse }: AppSidebarProps) => {

@@ -10,23 +10,14 @@ import AppLayout from "@/components/layout/AppLayout";
 import { SkeletonPage } from "@/components/shared/Skeletons";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
-import DashboardPage from "@/pages/DashboardPage";
 import ProtectedRoute from "@/components/shared/ProtectedRoute";
 import NotFound from "@/pages/NotFound";
 
-const SkillGapPage = lazy(() => import("@/pages/SkillGapPage"));
-const AIImpactPage = lazy(() => import("@/pages/AIImpactPage"));
-const ForecastPage = lazy(() => import("@/pages/ForecastPage"));
-const ChatPage = lazy(() => import("@/pages/ChatPage"));
+const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
+const SupplySidePage = lazy(() => import("@/pages/SupplySidePage"));
+const DemandSidePage = lazy(() => import("@/pages/DemandSidePage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
-const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
-const UniversityPage = lazy(() => import("@/pages/UniversityPage"));
-const AgentsPage = lazy(() => import("@/pages/AgentsPage"));
-const AdminPage = lazy(() => import("@/pages/AdminPage"));
-const DataLandscapePage = lazy(() => import("@/pages/DataLandscapePage"));
-const SkillsTaxonomyPage = lazy(() => import("@/pages/SkillsTaxonomyPage"));
-const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
-const DataExplorerPage = lazy(() => import("@/pages/DataExplorerPage"));
+const AIImpactPage = lazy(() => import("@/pages/AIImpactPage"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,20 +46,11 @@ const App = () => (
             <Route path="/register" element={<RegisterPage />} />
             <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/skill-gap" element={<Lazy><SkillGapPage /></Lazy>} />
-              <Route path="/ai-impact" element={<Lazy><AIImpactPage /></Lazy>} />
-              <Route path="/forecast" element={<Lazy><ForecastPage /></Lazy>} />
-              <Route path="/chat" element={<Lazy><ChatPage /></Lazy>} />
+              <Route path="/" element={<Lazy><DashboardPage /></Lazy>} />
+              <Route path="/supply" element={<Lazy><SupplySidePage /></Lazy>} />
+              <Route path="/demand" element={<Lazy><DemandSidePage /></Lazy>} />
               <Route path="/knowledge-base" element={<Lazy><KnowledgeBasePage /></Lazy>} />
-              <Route path="/reports" element={<Lazy><ReportsPage /></Lazy>} />
-              <Route path="/university" element={<Lazy><UniversityPage /></Lazy>} />
-              <Route path="/agents" element={<Lazy><AgentsPage /></Lazy>} />
-              <Route path="/admin" element={<Lazy><AdminPage /></Lazy>} />
-              <Route path="/data-landscape" element={<Lazy><DataLandscapePage /></Lazy>} />
-              <Route path="/skills-taxonomy" element={<Lazy><SkillsTaxonomyPage /></Lazy>} />
-              <Route path="/data-explorer" element={<Lazy><DataExplorerPage /></Lazy>} />
-              <Route path="/settings" element={<Lazy><SettingsPage /></Lazy>} />
+              <Route path="/ai-impact" element={<Lazy><AIImpactPage /></Lazy>} />
             </Route>
             </Route>
             <Route path="*" element={<NotFound />} />

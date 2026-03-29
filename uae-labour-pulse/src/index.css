@@ -52,12 +52,12 @@
     --teal: 201 100% 36%;
     --teal-light: 201 73% 94%;
 
-    /* SGI Status Colors */
-    --sgi-critical: 10 85% 46%;
-    --sgi-shortage: 40 100% 50%;
-    --sgi-balanced: 155 100% 27%;
-    --sgi-surplus: 216 100% 40%;
-    --sgi-oversupply: 349 60% 30%;
+    /* SGI Status Colors — blue shades palette */
+    --sgi-critical: 210 52% 23%;
+    --sgi-shortage: 42 51% 54%;
+    --sgi-balanced: 166 47% 33%;
+    --sgi-surplus: 210 44% 53%;
+    --sgi-oversupply: 210 30% 56%;
 
     /* Surfaces */
     --surface: 0 0% 100%;
@@ -120,4 +120,23 @@
   .navy-gradient {
     background: linear-gradient(135deg, hsl(var(--navy)), hsl(var(--navy-dark)));
   }
+}
+
+/* ── Performance Optimizations ─────────────────────────── */
+.recharts-wrapper {
+  contain: content;
+}
+.recharts-surface {
+  will-change: auto;
+}
+main {
+  contain: layout style;
+}
+/* Smooth scrolling with GPU acceleration */
+main > div {
+  transform: translateZ(0);
+}
+/* Reduce paint on card hovers — CSS only, no JS */
+.hover\:shadow-lg:hover {
+  will-change: transform;
 }
