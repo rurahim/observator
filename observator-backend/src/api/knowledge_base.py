@@ -517,14 +517,28 @@ async def browse_table(
     params: dict = {}
     param_idx = 0
 
-    if search and text_columns:
+    if search:
         or_parts = []
+        # Search text columns
         for col in text_columns[:5]:
             pname = f"s{param_idx}"
             or_parts.append(f"{col} ILIKE :{pname}")
             params[pname] = f"%{search}%"
             param_idx += 1
-        conditions.append(f"({' OR '.join(or_parts)})")
+        # Also search integer ID columns if search looks like a number
+        if search.strip().isdigit():
+            int_columns = [
+                row[0] for row in col_rows
+                if row[1] in ("integer", "bigint", "smallint", "numeric")
+                and ("id" in row[0].lower() or "code" in row[0].lower() or "time" in row[0].lower())
+            ]
+            for col in int_columns[:3]:
+                pname = f"s{param_idx}"
+                or_parts.append(f"CAST({col} AS text) = :{pname}")
+                params[pname] = search.strip()
+                param_idx += 1
+        if or_parts:
+            conditions.append(f"({' OR '.join(or_parts)})")
 
     if filters:
         try:
