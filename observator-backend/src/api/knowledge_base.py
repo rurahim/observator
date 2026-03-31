@@ -20,8 +20,8 @@ TABLE_REGISTRY = {
     "Dimensions": {
         "dim_time": {
             "display_name": "Time Periods",
-            "description": "Calendar periods — year, quarter, month.",
-            "data_type": "generated", "source": "System generated calendar 2000–2030", "status": "complete",
+            "description": "Calendar dates 2015-2027 with week, month, quarter, year. Supply data covers 2015-2019, demand 2024-2026, future dates for forecasting.",
+            "data_type": "generated", "source": "System generated calendar. Trimmed: removed pre-2015 and post-2027 dates.", "status": "complete — 4,748 days",
             "source_url": None,
         },
         "dim_region": {
