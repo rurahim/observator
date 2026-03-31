@@ -855,48 +855,61 @@ const KnowledgeBasePage = () => {
                           </span>
 
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setPage((p) => Math.max(1, p - 1))}
-                              disabled={page === 1}
-                              className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
+                            {/* First page */}
+                            <button onClick={() => setPage(1)} disabled={page === 1}
+                              className="px-2 py-1.5 rounded-lg text-[10px] font-medium hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-text-muted">
+                              ⟨⟨
+                            </button>
+                            {/* Prev */}
+                            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+                              className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                               <ChevronLeft className="w-4 h-4" />
                             </button>
 
-                            {/* Page numbers */}
-                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                              let pageNum: number;
-                              if (totalPages <= 5) {
-                                pageNum = i + 1;
-                              } else if (page <= 3) {
-                                pageNum = i + 1;
-                              } else if (page >= totalPages - 2) {
-                                pageNum = totalPages - 4 + i;
-                              } else {
-                                pageNum = page - 2 + i;
-                              }
-                              return (
-                                <button
-                                  key={pageNum}
-                                  onClick={() => setPage(pageNum)}
-                                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-                                    page === pageNum
-                                      ? 'bg-navy text-white'
-                                      : 'text-text-muted hover:bg-surface-hover'
-                                  }`}
-                                >
-                                  {pageNum}
-                                </button>
-                              );
-                            })}
+                            {/* Page numbers — show up to 10 */}
+                            {(() => {
+                              const maxVisible = Math.min(10, totalPages);
+                              let start: number;
+                              if (totalPages <= 10) start = 1;
+                              else if (page <= 5) start = 1;
+                              else if (page >= totalPages - 4) start = totalPages - 9;
+                              else start = page - 4;
 
-                            <button
-                              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                              disabled={page === totalPages}
-                              className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                            >
+                              return Array.from({ length: maxVisible }, (_, i) => {
+                                const pn = start + i;
+                                return (
+                                  <button key={pn} onClick={() => setPage(pn)}
+                                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                                      page === pn ? 'bg-navy text-white' : 'text-text-muted hover:bg-surface-hover'
+                                    }`}>
+                                    {pn}
+                                  </button>
+                                );
+                              });
+                            })()}
+
+                            {/* Next */}
+                            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                              className="p-1.5 rounded-lg hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                               <ChevronRight className="w-4 h-4" />
                             </button>
+                            {/* Last page */}
+                            <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
+                              className="px-2 py-1.5 rounded-lg text-[10px] font-medium hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-text-muted">
+                              ⟩⟩
+                            </button>
+
+                            {/* Jump to page input */}
+                            <span className="text-[10px] text-text-muted ml-2">{t('صفحة', 'pg')}</span>
+                            <input type="number" min={1} max={totalPages}
+                              value={page}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value);
+                                if (v >= 1 && v <= totalPages) setPage(v);
+                              }}
+                              className="w-14 px-2 py-1 text-xs text-center border border-gray-200 rounded-lg tabular-nums focus:outline-none focus:ring-1 focus:ring-navy/20"
+                            />
+                            <span className="text-[10px] text-text-muted">/ {totalPages.toLocaleString()}</span>
                           </div>
                         </div>
                       )}
