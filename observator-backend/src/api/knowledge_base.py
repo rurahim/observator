@@ -76,15 +76,35 @@ TABLE_REGISTRY = {
     "Facts - Labour Market": {
         "fact_supply_talent_agg": {
             "display_name": "Labour Supply Aggregates",
-            "description": "842K rows: employment counts by emirate, gender, age, sector, nationality.",
-            "data_type": "official", "source": "Bayanat — MOHRE Employment + Economic Activity datasets (124 CSVs)", "status": "complete — needs ISCO occupation mapping",
+            "description": "842K rows: EMPLOYED worker headcounts by emirate, gender, age group. This is census employment data — NOT available/unemployed workers. GLMM/MOHRE mega-aggregates moved to fact_workforce_totals.",
+            "data_type": "official", "source": "Bayanat — MOHRE Employment + Economic Activity (124 CSVs). Cleaned: removed 315 aggregate rows to fact_workforce_totals.", "status": "complete — granular data only",
             "source_url": "https://bayanat.ae/en/dataset?groups=employment-labour",
         },
         "fact_demand_vacancies_agg": {
             "display_name": "Job Vacancies Aggregates",
-            "description": "37K rows: job postings with title, company, location, industry.",
-            "data_type": "scraped", "source": "LinkedIn UAE job scrape (36.9K) + MOHRE Permits (252) + JSearch API (248)", "status": "complete — needs ISCO occupation mapping",
+            "description": "37K rows: individual job postings (each row = 1 posting, demand_count = 1). LinkedIn scrape 2024-2025 + JSearch API. MOHRE permits moved to fact_work_permits.",
+            "data_type": "scraped", "source": "LinkedIn UAE scrape (36.9K postings) + JSearch API (248). Cleaned: removed 252 MOHRE work permits (not vacancies).", "status": "complete — clean job postings only",
             "source_url": "https://www.linkedin.com/jobs/search/?location=United%20Arab%20Emirates",
+        },
+    },
+    "Facts - Unemployment & Labour Force": {
+        "fact_unemployed": {
+            "display_name": "Unemployment & Labour Force",
+            "description": "510 rows: unemployment rates by age, gender, nationality, education, emirate + labour force participation rates.",
+            "data_type": "official", "source": "Bayanat — Unemployment rates + Labour force participation (9 CSV files)", "status": "complete — 2001-2016 coverage",
+            "source_url": "https://bayanat.ae/en/dataset?groups=employment-labour",
+        },
+        "fact_work_permits": {
+            "display_name": "MOHRE Work Permits",
+            "description": "252 rows: work permits issued per emirate/sector. NOT job vacancies — these are permits for incoming workers.",
+            "data_type": "official", "source": "MOHRE — Work permits issued (separated from job postings for accuracy)", "status": "complete — clearly separated from job vacancies",
+            "source_url": None,
+        },
+        "fact_workforce_totals": {
+            "display_name": "Workforce Totals (Reference)",
+            "description": "315 rows: total workforce per emirate from GLMM/MOHRE. Large aggregate numbers (up to 643K per emirate). Reference only — NOT for per-occupation analysis.",
+            "data_type": "official", "source": "GLMM + MOHRE 2023-2024 aggregate workforce data", "status": "complete — separated from granular supply data",
+            "source_url": None,
         },
     },
     "Facts - Education": {
