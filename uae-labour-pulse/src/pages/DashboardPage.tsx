@@ -26,6 +26,7 @@ import {
   useSkillMatchingSummary, useDemandedSkills, useSuppliedSkills, useSkillComparison,
   useExplorerFilters,
   useRealOccupationComparison, useOccupationSkillsDetail, useISCOGroupComparison,
+  usePastYearly, useFutureProjection,
 } from '@/api/hooks';
 import { formatCompact, formatNumber, formatPercent } from '@/utils/formatters';
 import { COLORS, GRID_PROPS, AXIS_TICK, AXIS_TICK_SM, getSeriesColor } from '@/utils/chartColors';
@@ -78,6 +79,11 @@ const DashboardPage = () => {
   const [occRegion, setOccRegion] = useState('');
   const [occPage, setOccPage] = useState(1);
   const [selectedOccId, setSelectedOccId] = useState<number | null>(null);
+
+  // Past/Future hooks
+  const [pastYear, setPastYear] = useState<number | null>(null);
+  const { data: pastData } = usePastYearly({ year: pastYear || undefined, region: occRegion || undefined });
+  const { data: futureData } = useFutureProjection();
 
   // Occupation comparison hooks
   const { data: iscoGroups } = useISCOGroupComparison({ region: occRegion || undefined });
@@ -576,110 +582,147 @@ const DashboardPage = () => {
       </DataStory>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* SECTION 2b: TIME SERIES — Past, Present, Future                    */}
+      {/* SECTION 2b: PAST & FUTURE                                         */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <DataStory
-        title="Time Series — Past, Present, Future"
-        method="Enrollment: Bayanat HE CSVs 2002-2024 (7 estimated). Job postings: LinkedIn UAE monthly aggregation. Gap: supply vs demand from materialized views."
-        quality="official+estimated"
-        tables={[{name:'fact_program_enrollment', label:'Enrollment (668)'}, {name:'fact_demand_vacancies_agg', label:'Job Vacancies (37K)'}, {name:'vw_gap_cube', label:'Gap Cube (2.7K)'}]}
-        sourceUrl="https://bayanat.ae/en/dataset?groups=education"
-      >
-      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-        <h2 className="text-base font-bold text-gray-900 flex items-center gap-2 mb-4">
-          <TrendingUp className="w-5 h-5 text-navy" />
-          {t('الاتجاهات الزمنية — الماضي والحاضر والمستقبل', 'Time Series — Past, Present & Future')}
-        </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-        {/* 3 time series charts in a row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* LEFT: PAST (2015-2019) */}
+        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">{t('الماضي — اتجاه العمالة', 'Past — Employment Trend')}</h3>
+              <p className="text-[10px] text-gray-400">2015-2019 • {t('انقر على سنة لعرض التفاصيل', 'Click a year for detail')}</p>
+            </div>
+            <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-semibold">REAL</span>
+          </div>
 
-          {/* Enrollment Over Time (Supply Pipeline) */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('خط العرض: الالتحاق', 'Supply Pipeline: Enrollment')}</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={enrollVsGrad} margin={{ left: 5, right: 5, top: 5, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gEnroll" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.navy} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={COLORS.navy} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
+          {/* Area chart: workers by year — clickable dots */}
+          {(pastData?.yearly_trend?.length ?? 0) > 0 && (
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={pastData.yearly_trend}
+                onClick={(data: any) => {
+                  if (data?.activePayload?.[0]?.payload?.year) {
+                    const yr = data.activePayload[0].payload.year;
+                    setPastYear(pastYear === yr ? null : yr);
+                  }
+                }}>
                 <CartesianGrid {...GRID_PROPS} />
                 <XAxis dataKey="year" tick={AXIS_TICK_SM} />
                 <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="enrollment" name={t('الالتحاق', 'Enrollment')} fill="url(#gEnroll)" stroke={COLORS.navy} strokeWidth={2} />
-                <Line type="monotone" dataKey="graduates" name={t('الخريجون', 'Graduates')} stroke={COLORS.teal} strokeWidth={2} dot={{ r: 2, fill: COLORS.teal }} />
-              </ComposedChart>
-            </ResponsiveContainer>
-            <p className="text-[10px] text-gray-400 mt-1">{t('2002-2024 • ذهبي = تقديري', '2002-2024 • Blue=enrollment, Teal=graduates')}</p>
-          </div>
-
-          {/* Job Postings Over Time (Demand Momentum) */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('خط الطلب: الوظائف الشهرية', 'Demand Momentum: Monthly Jobs')}</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={demandMonthly} margin={{ left: 5, right: 5, top: 5, bottom: 0 }}>
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
+                      <p className="font-semibold">{d?.year}</p>
+                      <p className="text-[#007DB5]">{t('العمال', 'Workers')}: {formatCompact(d?.workers)}</p>
+                      <p className="text-gray-400">{d?.occupations} {t('مهنة', 'occupations')}</p>
+                      <p className="text-[10px] text-gray-300 mt-1">{t('انقر لعرض التفاصيل', 'Click for details')}</p>
+                    </div>
+                  );
+                }} />
                 <defs>
-                  <linearGradient id="gDemand" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.gold} stopOpacity={0.35} />
-                    <stop offset="100%" stopColor={COLORS.gold} stopOpacity={0.02} />
+                  <linearGradient id="gPast" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#007DB5" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#007DB5" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid {...GRID_PROPS} />
-                <XAxis dataKey="month" tick={AXIS_TICK_SM} interval={Math.max(0, Math.floor((demandMonthly?.length ?? 0) / 6))} />
-                <YAxis tick={AXIS_TICK_SM} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="count" name={t('الوظائف', 'Job Postings')} fill="url(#gDemand)" stroke={COLORS.gold} strokeWidth={2} />
-              </AreaChart>
+                <Area type="monotone" dataKey="workers" fill="url(#gPast)" stroke="#007DB5" strokeWidth={2} cursor="pointer" />
+                {pastYear && <ReferenceLine x={pastYear} stroke="#003366" strokeDasharray="4 4" />}
+              </ComposedChart>
             </ResponsiveContainer>
-            <p className="text-[10px] text-gray-400 mt-1">{t('آخر 24 شهر من LinkedIn', 'Last 24 months from LinkedIn UAE')}</p>
-          </div>
+          )}
 
-          {/* Supply vs Demand Gap Trend */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t('اتجاه الفجوة', 'Gap Trend: Supply vs Demand')}</h3>
-            {(supplyDemandTrend?.length ?? 0) > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <ComposedChart data={supplyDemandTrend} margin={{ left: 5, right: 5, top: 5, bottom: 0 }}>
-                  <CartesianGrid {...GRID_PROPS} />
-                  <XAxis dataKey="month" tick={AXIS_TICK_SM} interval={Math.max(0, Math.floor((supplyDemandTrend?.length ?? 0) / 6))} />
-                  <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="supply" name={t('العرض', 'Supply')} fill={COLORS.teal} fillOpacity={0.2} stroke={COLORS.teal} strokeWidth={2} />
-                  <Area type="monotone" dataKey="demand" name={t('الطلب', 'Demand')} fill={COLORS.navy} fillOpacity={0.2} stroke={COLORS.navy} strokeWidth={2} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[220px] flex items-center justify-center text-xs text-gray-400">
-                {t('بيانات الفجوة الزمنية قيد الإنشاء', 'Gap trend data building up...')}
+          {/* Year detail — occupations for selected year */}
+          {pastYear && (pastData?.occupations?.length ?? 0) > 0 && (
+            <div className="border-t border-gray-100 pt-3">
+              <h4 className="text-[10px] font-semibold text-gray-500 uppercase mb-2">{t('أعلى المهن في', 'Top Occupations in')} {pastYear}</h4>
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {pastData.occupations.map((o: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-700 truncate w-[45%]">{o.occupation}</span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#007DB5] rounded-full"
+                        style={{ width: `${Math.min(100, (o.workers / Math.max(pastData.occupations[0]?.workers || 1, 1)) * 100)}%` }} />
+                    </div>
+                    <span className="text-[10px] font-semibold text-[#007DB5] w-[15%] text-right">{formatCompact(o.workers)}</span>
+                  </div>
+                ))}
               </div>
-            )}
-            <p className="text-[10px] text-gray-400 mt-1">{t('العرض (أزرق فاتح) مقابل الطلب (أزرق غامق)', 'Supply (teal) vs Demand (navy) monthly')}</p>
-          </div>
+              <p className="text-[9px] text-gray-400 mt-2">{t('ملاحظة: الأرقام تقديرية (موزعة من فئات ISCO)', 'Note: Numbers are ESTIMATED (distributed from ISCO groups)')}</p>
+            </div>
+          )}
+          {pastYear && (pastData?.occupations?.length ?? 0) === 0 && (
+            <p className="text-xs text-gray-400 text-center py-4">{t('لا توجد بيانات لهذه السنة', 'No data for this year')}</p>
+          )}
         </div>
 
-        <InsightPanel
-          explanation={t(
-            'ثلاث سلاسل زمنية توضح: (1) خط إمداد التعليم العالي (2) حركة سوق العمل (3) الفجوة بينهما عبر الزمن.',
-            'Three time series showing: (1) Education supply pipeline growth, (2) Job market hiring momentum, (3) The gap between supply and demand over time.'
+        {/* RIGHT: FUTURE (2026-2030) */}
+        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">{t('المستقبل — توقعات', 'Future — Projections')}</h3>
+              <p className="text-[10px] text-gray-400">2026-2030 • {t('تنبؤ بالذكاء الاصطناعي والنمو', 'AI + growth forecasting')}</p>
+            </div>
+            <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">FORECAST</span>
+          </div>
+
+          {/* Composed chart: graduates vs demand with AI impact */}
+          {(futureData?.projections?.length ?? 0) > 0 && (
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={futureData.projections}>
+                <CartesianGrid {...GRID_PROPS} />
+                <XAxis dataKey="year" tick={AXIS_TICK_SM} />
+                <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
+                      <p className="font-semibold">{d?.year} {t('(توقعات)', '(forecast)')}</p>
+                      <p className="text-[#007DB5]">{t('خريجون متوقعون', 'Expected Graduates')}: {formatCompact(d?.supply_graduates)}</p>
+                      <p className="text-[#003366]">{t('وظائف متوقعة', 'Expected Jobs')}: {formatCompact(d?.demand_jobs)}</p>
+                      <p className="text-[#C9A84C]">{t('وظائف يلغيها الذكاء', 'AI Displaced')}: -{formatCompact(d?.ai_displacement)}</p>
+                      <p className="text-[#2E7D6B]">{t('وظائف جديدة بالذكاء', 'AI New Jobs')}: +{formatCompact(d?.ai_new_jobs)}</p>
+                      <p className="text-gray-400 border-t mt-1 pt-1">{t('الفجوة', 'Gap')}: {formatCompact(d?.gap)}</p>
+                    </div>
+                  );
+                }} />
+                <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 9 }} />
+                <Area type="monotone" dataKey="supply_graduates" name={t('خريجون', 'Graduates')} fill="#007DB5" fillOpacity={0.15} stroke="#007DB5" strokeWidth={2} />
+                <Line type="monotone" dataKey="demand_jobs" name={t('وظائف (مع الذكاء)', 'Jobs (AI adjusted)')} stroke="#003366" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="demand_base" name={t('وظائف (أساسي)', 'Jobs (base)')} stroke="#C9A84C" strokeWidth={1} strokeDasharray="3 3" dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
           )}
-          insight={(() => {
-            const trend = supply?.enrollment_trend || [];
-            if (trend.length < 2) return undefined;
-            const first = trend[0]?.enrollment ?? 0;
-            const last = trend[trend.length - 1]?.enrollment ?? 0;
-            const growth = first > 0 ? ((last - first) / first * 100).toFixed(0) : '?';
-            return t(
-              `الالتحاق نما ${growth}% من ${formatCompact(first)} (${trend[0]?.year}) إلى ${formatCompact(last)} (${trend[trend.length-1]?.year}). الطلب الشهري: ${formatCompact(demand?.total_postings ?? 0)} وظيفة.`,
-              `Enrollment grew ${growth}% from ${formatCompact(first)} (${trend[0]?.year}) to ${formatCompact(last)} (${trend[trend.length-1]?.year}). Monthly demand: ${formatCompact(demand?.total_postings ?? 0)} job postings.`
-            );
-          })()}
-          severity="info" compact
-        />
+
+          {/* Assumptions + methodology */}
+          {futureData?.methodology && (
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <h4 className="text-[10px] font-semibold text-gray-500 uppercase">{t('المنهجية والافتراضات', 'Methodology & Assumptions')}</h4>
+              <div className="grid grid-cols-2 gap-2 text-[9px]">
+                <div className="p-2 rounded-lg bg-gray-50">
+                  <span className="text-gray-500">{t('نمو الالتحاق', 'Enrollment growth')}:</span>
+                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.enrollment_growth}/yr</span>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-50">
+                  <span className="text-gray-500">{t('نمو الطلب', 'Demand growth')}:</span>
+                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.demand_growth}/yr</span>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-50">
+                  <span className="text-gray-500">{t('معدل التخرج', 'Graduation rate')}:</span>
+                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.graduation_rate}</span>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-50">
+                  <span className="text-gray-500">{t('تأثير الذكاء', 'AI impact')}:</span>
+                  <span className="font-semibold text-gray-700 ml-1">-{futureData.assumptions?.ai_displacement_rate} / +{futureData.assumptions?.ai_new_job_rate}</span>
+                </div>
+              </div>
+              <p className="text-[8px] text-amber-600 bg-amber-50 px-2 py-1 rounded">{t('⚠️ جميع الأرقام المستقبلية تقديرات وليست بيانات فعلية', '⚠️ ALL future numbers are PROJECTIONS based on assumptions, not measured data')}</p>
+            </div>
+          )}
+        </div>
       </div>
-      </DataStory>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* SECTION 3: SUPPLY vs DEMAND COMPARISON                            */}

@@ -708,6 +708,22 @@ export function useRealSkillComparison(params?: { limit?: number; search?: strin
   });
 }
 
+export function usePastYearly(params?: { year?: number; region?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["past-yearly", params],
+    queryFn: () => api.get<any>("/skill-matching/past-yearly", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useFutureProjection() {
+  return useQuery({
+    queryKey: ["future-projection"],
+    queryFn: () => api.get<any>("/skill-matching/future-projection"),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useISCOGroupComparison(params?: { region?: string }) {
   return useQuery({
     queryKey: ["isco-group-comparison", params],
