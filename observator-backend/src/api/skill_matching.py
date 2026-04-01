@@ -308,6 +308,9 @@ async def real_occupation_comparison(
     limit: int = 20,
     search: str | None = None,
     region: str | None = None,
+    sort: str = "demand_jobs",
+    order: str = "desc",
+    both_sides: bool = True,
     page: int = 1,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -330,6 +333,10 @@ async def real_occupation_comparison(
         params["q"] = f"%{search}%"
 
     occ_where = (" AND " + " AND ".join(occ_conds)) if occ_conds else ""
+    both_filter = "(COALESCE(s.workers, 0) > 0 AND COALESCE(d.jobs, 0) > 0)" if both_sides else "(COALESCE(s.workers, 0) > 0 OR COALESCE(d.jobs, 0) > 0)"
+    allowed_sorts = {"demand_jobs", "supply_workers", "gap", "skill_count", "occupation"}
+    safe_sort = sort if sort in allowed_sorts else "demand_jobs"
+    safe_order = "ASC" if order.upper() == "ASC" else "DESC"
 
     rows = (await db.execute(text(f"""
         WITH supply AS (
@@ -352,9 +359,9 @@ async def real_occupation_comparison(
         FROM dim_occupation o
         LEFT JOIN supply s ON o.occupation_id = s.occupation_id
         LEFT JOIN demand d ON o.occupation_id = d.occupation_id
-        WHERE (COALESCE(s.workers, 0) > 0 OR COALESCE(d.jobs, 0) > 0)
+        WHERE {both_filter}
         {occ_where}
-        ORDER BY demand_jobs DESC
+        ORDER BY {safe_sort} {safe_order}
         LIMIT :lim OFFSET :offset
     """), params)).fetchall()
 
