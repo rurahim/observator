@@ -299,62 +299,61 @@ const DashboardPage = () => {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* SECTION 2: OCCUPATION SUPPLY-DEMAND COMPARISON                     */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* ISCO GROUP COMPARISON — REAL DATA (this is the honest level) */}
-      {(iscoGroups?.groups?.length ?? 0) > 0 && (
-        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">{t('العرض والطلب حسب فئة المهن', 'Supply vs Demand by Occupation Group')}</h2>
-              <p className="text-[11px] text-gray-400">{t('بيانات حقيقية — التعداد الوظيفي مقابل الوظائف المنشورة', 'REAL data — Bayanat employment census vs LinkedIn job postings')}</p>
-            </div>
-            <span className="text-[9px] px-2 py-1 rounded-full bg-green-50 text-green-700 font-semibold">{t('بيانات حقيقية', 'REAL DATA')}</span>
-          </div>
-          <ResponsiveContainer width="100%" height={340}>
-            <BarChart data={iscoGroups.groups} layout="vertical" margin={{ left: 160, right: 80 }}>
-              <CartesianGrid {...GRID_PROPS} horizontal={false} />
-              <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#4A5568' }} width={155} />
-              <Tooltip content={({ payload }) => {
-                if (!payload?.length) return null;
-                const d = payload[0]?.payload;
-                return (
-                  <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-                    <p className="font-semibold mb-1">{d?.name} (ISCO {d?.code})</p>
-                    <p className="text-[#007DB5]">{t('العمال', 'Workers')}: <b>{formatCompact(d?.workers)}</b></p>
-                    <p className="text-[#003366]">{t('الوظائف', 'Jobs')}: <b>{formatCompact(d?.jobs)}</b></p>
-                    <p className="text-gray-400">{t('معدل التوظيف', 'Hiring rate')}: {d?.ratio}%</p>
-                  </div>
-                );
-              }} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="workers" name={t('العمال الموظفون (تعداد)', 'Employed Workers (census)')} fill="#007DB5" radius={[0, 4, 4, 0]} barSize={14} />
-              <Bar dataKey="jobs" name={t('الوظائف المنشورة (LinkedIn)', 'Job Postings (LinkedIn)')} fill="#003366" radius={[0, 4, 4, 0]} barSize={14} />
-            </BarChart>
-          </ResponsiveContainer>
-          <InsightPanel
-            explanation={t(
-              'هذا الرسم يقارن العمالة الفعلية حسب فئات المهن الدولية (ISCO) مع الوظائف المنشورة. البيانات حقيقية على هذا المستوى.',
-              'This chart compares REAL employment census data by ISCO major occupation groups with LinkedIn job postings. Data is measured (not estimated) at this level.'
-            )}
-            severity="info" compact
-          />
-        </div>
-      )}
-
-      {/* DETAILED OCCUPATION COMPARISON — ESTIMATED SUB-OCCUPATIONS */}
-      <DataStory title="Detailed Occupation Breakdown" quality="official+generated"
-        method="Sub-occupation numbers are ESTIMATED — Bayanat census measures at ISCO major group level (9 groups). Workers are proportionally distributed to specific ESCO occupations using LinkedIn job title frequency as weights. Click any occupation to see required skills."
+      {/* UNIFIED: ISCO Groups + Occupation Detail in one section */}
+      <DataStory title="Supply vs Demand by Occupation" quality="official+generated"
+        method="ISCO group level = REAL Bayanat census data. Specific occupations = ESTIMATED (proportionally distributed). Click any ISCO group to filter. Click any occupation for skill breakdown."
         tables={[{name:'fact_supply_talent_agg',label:'Employment Census (842K)'},{name:'fact_demand_vacancies_agg',label:'Job Postings (37K)'},{name:'fact_occupation_skills',label:'Occupation Skills (322K)'}]}
-        caveats="Supply (2015-2019) and demand (2024-2025) are from different time periods. Supply = currently employed workers, NOT available/unemployed. Gap comparison is indicative, not exact."
+        caveats="Supply (2015-2019) and demand (2024-2025) are from different time periods."
         sourceUrl="https://bayanat.ae/en/dataset?groups=employment-labour">
-      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
-        {/* Header */}
+      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-5">
+        {/* Title */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-gray-900">{t('تفصيل المهن — بيانات تقديرية', 'Occupation Detail — Estimated Breakdown')}</h2>
-            <p className="text-[11px] text-gray-400">{t('الأرقام تقديرية — مستمدة من توزيع نسبي للبيانات الحقيقية أعلاه • انقر لعرض المهارات', 'Numbers are ESTIMATED — proportionally distributed from real group data above • Click for skills')}</p>
+            <h2 className="text-base font-bold text-gray-900">{t('العرض والطلب حسب المهنة', 'Supply vs Demand by Occupation')}</h2>
+            <p className="text-[11px] text-gray-400">{t('انقر على فئة لتصفية المهن أدناه • انقر على مهنة لعرض المهارات', 'Click a group to filter occupations below • Click an occupation for skill breakdown')}</p>
           </div>
           <span className="text-[10px] text-gray-400">{occComparison?.total ?? '—'} {t('مهنة', 'occupations')}</span>
+        </div>
+
+        {/* ISCO Group Chart */}
+        {(iscoGroups?.groups?.length ?? 0) > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase">{t('فئات المهن — بيانات حقيقية', 'Occupation Groups — Real Data')}</h3>
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-semibold">REAL</span>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={iscoGroups.groups} layout="vertical" margin={{ left: 155, right: 60 }}>
+                <CartesianGrid {...GRID_PROPS} horizontal={false} />
+                <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#4A5568' }} width={150} />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
+                      <p className="font-semibold mb-1">{d?.name} (ISCO {d?.code})</p>
+                      <p className="text-[#007DB5]">{t('العمال', 'Workers')}: <b>{formatCompact(d?.workers)}</b></p>
+                      <p className="text-[#003366]">{t('الوظائف', 'Jobs')}: <b>{formatCompact(d?.jobs)}</b></p>
+                      <p className="text-gray-400">{t('النسبة', 'Ratio')}: {d?.ratio}%</p>
+                    </div>
+                  );
+                }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10 }} />
+                <Bar dataKey="workers" name={t('العمال (تعداد)', 'Workers (census)')} fill="#007DB5" radius={[0, 3, 3, 0]} barSize={12} />
+                <Bar dataKey="jobs" name={t('الوظائف (LinkedIn)', 'Jobs (LinkedIn)')} fill="#003366" radius={[0, 3, 3, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Divider + subtitle for detailed breakdown */}
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase">{t('تفصيل المهن', 'Occupation Detail')}</h3>
+            <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">ESTIMATED</span>
+          </div>
+          <p className="text-[10px] text-gray-400 mb-3">{t('أرقام تقديرية — موزعة نسبياً من بيانات الفئات أعلاه', 'Estimated — proportionally distributed from group data above')}</p>
         </div>
 
         {/* Filters */}
