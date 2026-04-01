@@ -708,6 +708,14 @@ export function useRealSkillComparison(params?: { limit?: number; search?: strin
   });
 }
 
+export function useISCOGroupComparison(params?: { region?: string }) {
+  return useQuery({
+    queryKey: ["isco-group-comparison", params],
+    queryFn: () => api.get<any>("/skill-matching/isco-group-comparison", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useOccupationSkillsDetail(occupationId: number | null) {
   return useQuery({
     queryKey: ["occ-skills-detail", occupationId],

@@ -455,3 +455,69 @@ async def occupation_skills_detail(
         "essential_count": sum(1 for r in demanded if r[3] == 'essential'),
         "supplied_count": sum(1 for r in demanded if r[0] in supplied),
     }
+
+
+@router.get("/isco-group-comparison")
+async def isco_group_comparison(
+    region: str | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """HONEST supply-demand comparison at ISCO major group level.
+    
+    This is the REAL level — Bayanat data is measured at this granularity.
+    Sub-occupation numbers are estimated via proportional distribution.
+    """
+    params: dict = {}
+    supply_where = ""
+    demand_where = ""
+    if region:
+        supply_where = "AND s.region_code = :reg"
+        demand_where = "AND d.region_code = :reg"
+        params["reg"] = region
+
+    ISCO_NAMES = {
+        '1': 'Managers', '2': 'Professionals', '3': 'Technicians & Associates',
+        '4': 'Clerical Support', '5': 'Service & Sales', '6': 'Agriculture & Forestry',
+        '7': 'Craft & Trade Workers', '8': 'Machine Operators', '9': 'Elementary Occupations',
+        '0': 'Armed Forces',
+    }
+
+    rows = (await db.execute(text(f"""
+        WITH supply_grp AS (
+            SELECT o.isco_major_group as grp, SUM(s.supply_count) as workers
+            FROM fact_supply_talent_agg s
+            JOIN dim_occupation o ON s.occupation_id = o.occupation_id
+            WHERE o.isco_major_group IS NOT NULL {supply_where}
+            GROUP BY o.isco_major_group
+        ),
+        demand_grp AS (
+            SELECT o.isco_major_group as grp, COUNT(*) as jobs
+            FROM fact_demand_vacancies_agg d
+            JOIN dim_occupation o ON d.occupation_id = o.occupation_id
+            WHERE o.isco_major_group IS NOT NULL {demand_where}
+            GROUP BY o.isco_major_group
+        )
+        SELECT COALESCE(s.grp, d.grp) as grp,
+            COALESCE(s.workers, 0) as workers,
+            COALESCE(d.jobs, 0) as jobs
+        FROM supply_grp s
+        FULL OUTER JOIN demand_grp d ON s.grp = d.grp
+        ORDER BY COALESCE(s.workers, 0) DESC
+    """), params)).fetchall()
+
+    return {
+        "groups": [
+            {
+                "code": r[0], "name": ISCO_NAMES.get(r[0], f'Group {r[0]}'),
+                "workers": int(r[1]), "jobs": int(r[2]),
+                "ratio": round(r[2] / max(r[1], 1) * 100, 3),
+            }
+            for r in rows
+        ],
+        "explanation": {
+            "workers": "REAL — Bayanat/MOHRE census 2015-2019 at ISCO major group level",
+            "jobs": "REAL — LinkedIn job postings 2024-2025 mapped to ISCO groups",
+            "note": "This is the honest comparison. Sub-occupation numbers below are ESTIMATED via proportional distribution."
+        }
+    }
