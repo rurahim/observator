@@ -700,6 +700,22 @@ export function useExplorerSkillDetail(skillId: number | null) {
   return useQuery({ queryKey: ["explorer-skill-detail", skillId], queryFn: () => api.get<any>(`/explorer/skill-detail/${skillId}`), staleTime: 60_000, enabled: !!skillId });
 }
 
+export function useRealSkillComparison(params?: { limit?: number; search?: string; skill_type?: string; page?: number }) {
+  return useQuery({
+    queryKey: ["real-skill-comparison", params],
+    queryFn: () => api.get<any>("/skill-matching/real-comparison", params as any),
+    staleTime: 60_000,
+  });
+}
+
+export function useRealOccupationComparison(params?: { limit?: number; search?: string; region?: string; page?: number }) {
+  return useQuery({
+    queryKey: ["real-occ-comparison", params],
+    queryFn: () => api.get<any>("/skill-matching/real-occupation-comparison", params as any),
+    staleTime: 60_000,
+  });
+}
+
 export function useSkillComparison(params?: { limit?: number }) {
   return useQuery({
     queryKey: ["skill-comparison", params],

@@ -208,3 +208,178 @@ async def skill_comparison(limit: int = 20, user=Depends(get_current_user), db: 
             "supply_only_count": len(supply_only_ids),
         }
     }
+
+
+@router.get("/real-comparison")
+async def real_skill_comparison(
+    limit: int = 20,
+    search: str | None = None,
+    skill_type: str | None = None,
+    page: int = 1,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """REAL supply-demand comparison at skill level.
+    
+    Supply = employed workers in occupations requiring this skill (from Bayanat census).
+    Demand = job postings requiring this skill (from LinkedIn, essential only).
+    NOT courses — actual workforce vs actual job openings.
+    """
+    conds = []
+    params: dict = {"lim": limit, "offset": (page - 1) * limit}
+
+    if search:
+        conds.append("s.label_en ILIKE :q")
+        params["q"] = f"%{search}%"
+    if skill_type:
+        conds.append("s.skill_type = :st")
+        params["st"] = skill_type
+
+    where = (" AND " + " AND ".join(conds)) if conds else ""
+
+    rows = (await db.execute(text(f"""
+        WITH demand_skills AS (
+            SELECT js.skill_id, COUNT(DISTINCT js.demand_id) as job_count
+            FROM fact_job_skills js
+            WHERE js.relation_type = 'essential'
+            GROUP BY js.skill_id
+            HAVING COUNT(DISTINCT js.demand_id) >= 10
+        ),
+        supply_skills AS (
+            SELECT os.skill_id,
+                COUNT(DISTINCT os.occupation_id) as occ_count,
+                COALESCE(SUM(st.workers), 0) as worker_count
+            FROM fact_occupation_skills os
+            LEFT JOIN (
+                SELECT occupation_id, SUM(supply_count) as workers
+                FROM fact_supply_talent_agg
+                GROUP BY occupation_id
+            ) st ON os.occupation_id = st.occupation_id
+            GROUP BY os.skill_id
+        )
+        SELECT s.skill_id, s.label_en as skill, s.skill_type as type,
+            COALESCE(d.job_count, 0) as demand_jobs,
+            COALESCE(sup.worker_count, 0) as supply_workers,
+            COALESCE(sup.occ_count, 0) as supply_occupations,
+            CASE WHEN COALESCE(sup.worker_count, 0) > 0 AND COALESCE(d.job_count, 0) > 0
+                THEN ROUND((d.job_count::numeric / sup.worker_count * 100)::numeric, 2)
+                ELSE NULL END as demand_pct
+        FROM dim_skill s
+        LEFT JOIN demand_skills d ON s.skill_id = d.skill_id
+        LEFT JOIN supply_skills sup ON s.skill_id = sup.skill_id
+        WHERE (COALESCE(d.job_count, 0) > 0 OR COALESCE(sup.worker_count, 0) > 0)
+        {where}
+        ORDER BY demand_jobs DESC
+        LIMIT :lim OFFSET :offset
+    """), params)).fetchall()
+
+    # Total count for pagination
+    total = (await db.execute(text(f"""
+        SELECT count(DISTINCT s.skill_id)
+        FROM dim_skill s
+        LEFT JOIN (SELECT skill_id FROM fact_job_skills WHERE relation_type='essential' GROUP BY skill_id HAVING count(DISTINCT demand_id) >= 10) d ON s.skill_id = d.skill_id
+        LEFT JOIN fact_occupation_skills os ON s.skill_id = os.skill_id
+        WHERE (d.skill_id IS NOT NULL OR os.skill_id IS NOT NULL)
+        {where}
+    """), {k:v for k,v in params.items() if k not in ('lim','offset')})).scalar() or 0
+
+    return {
+        "skills": [
+            {
+                "skill_id": r[0], "skill": r[1], "type": r[2],
+                "demand_jobs": r[3], "supply_workers": r[4],
+                "supply_occupations": r[5], "demand_pct": float(r[6]) if r[6] else None,
+            }
+            for r in rows
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit if limit > 0 else 0,
+        "explanation": {
+            "demand_jobs": "Number of LinkedIn job postings requiring this skill (essential only)",
+            "supply_workers": "Number of employed workers in occupations that require this skill (Bayanat census 2015-2019)",
+            "demand_pct": "Jobs as % of workers — higher means more competitive hiring for this skill",
+        }
+    }
+
+
+@router.get("/real-occupation-comparison")
+async def real_occupation_comparison(
+    limit: int = 20,
+    search: str | None = None,
+    region: str | None = None,
+    page: int = 1,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """REAL supply-demand comparison at occupation level.
+    
+    Supply = employed workers per occupation (Bayanat census).
+    Demand = job postings per occupation (LinkedIn).
+    """
+    conds = []
+    params: dict = {"lim": limit, "offset": (page - 1) * limit}
+
+    if search:
+        conds.append("o.title_en ILIKE :q")
+        params["q"] = f"%{search}%"
+    if region:
+        conds.append("(s.region_code = :reg OR d.region_code = :reg)")
+        params["reg"] = region
+
+    where = (" AND " + " AND ".join(conds)) if conds else ""
+
+    rows = (await db.execute(text(f"""
+        WITH supply AS (
+            SELECT occupation_id, SUM(supply_count) as workers
+            FROM fact_supply_talent_agg
+            {'WHERE region_code = :reg' if region else ''}
+            GROUP BY occupation_id
+        ),
+        demand AS (
+            SELECT occupation_id, COUNT(*) as jobs
+            FROM fact_demand_vacancies_agg
+            {'WHERE region_code = :reg' if region else ''}
+            GROUP BY occupation_id
+        )
+        SELECT o.occupation_id, o.title_en as occupation, o.code_isco,
+            COALESCE(s.workers, 0) as supply_workers,
+            COALESCE(d.jobs, 0) as demand_jobs,
+            COALESCE(d.jobs, 0) - COALESCE(s.workers, 0) as gap,
+            (SELECT COUNT(*) FROM fact_occupation_skills os WHERE os.occupation_id = o.occupation_id) as skill_count
+        FROM dim_occupation o
+        LEFT JOIN supply s ON o.occupation_id = s.occupation_id
+        LEFT JOIN demand d ON o.occupation_id = d.occupation_id
+        WHERE (COALESCE(s.workers, 0) > 0 OR COALESCE(d.jobs, 0) > 0)
+        {where}
+        ORDER BY demand_jobs DESC
+        LIMIT :lim OFFSET :offset
+    """), params)).fetchall()
+
+    total = (await db.execute(text(f"""
+        SELECT count(DISTINCT o.occupation_id)
+        FROM dim_occupation o
+        LEFT JOIN fact_supply_talent_agg s ON o.occupation_id = s.occupation_id
+        LEFT JOIN fact_demand_vacancies_agg d ON o.occupation_id = d.occupation_id
+        WHERE (s.occupation_id IS NOT NULL OR d.occupation_id IS NOT NULL) {where}
+    """), {k:v for k,v in params.items() if k not in ('lim','offset')})).scalar() or 0
+
+    return {
+        "occupations": [
+            {
+                "occupation_id": r[0], "occupation": r[1], "isco": r[2],
+                "supply_workers": int(r[3]), "demand_jobs": int(r[4]),
+                "gap": int(r[5]), "skills": int(r[6]),
+            }
+            for r in rows
+        ],
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit if limit > 0 else 0,
+        "explanation": {
+            "supply_workers": "Total employed workers in this occupation (Bayanat/MOHRE census 2015-2019)",
+            "demand_jobs": "Number of LinkedIn job postings for this occupation (2024-2025)",
+            "gap": "demand_jobs - supply_workers (negative = more workers than openings)",
+            "note": "Supply is 2015-2019 census data. Demand is 2024-2025 postings. Different time periods."
+        }
+    }
