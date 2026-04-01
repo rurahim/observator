@@ -16,7 +16,7 @@ import {
 import {
   AreaChart, Area, BarChart, Bar, ComposedChart, Line,
   PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePageLoading } from '@/hooks/usePageLoading';
@@ -26,7 +26,7 @@ import {
   useSkillMatchingSummary, useDemandedSkills, useSuppliedSkills, useSkillComparison,
   useExplorerFilters,
   useRealOccupationComparison, useOccupationSkillsDetail, useISCOGroupComparison,
-  usePastYearly, useFutureProjection,
+  useUnifiedTimeline,
 } from '@/api/hooks';
 import { formatCompact, formatNumber, formatPercent } from '@/utils/formatters';
 import { COLORS, GRID_PROPS, AXIS_TICK, AXIS_TICK_SM, getSeriesColor } from '@/utils/chartColors';
@@ -80,10 +80,15 @@ const DashboardPage = () => {
   const [occPage, setOccPage] = useState(1);
   const [selectedOccId, setSelectedOccId] = useState<number | null>(null);
 
-  // Past/Future hooks
-  const [pastYear, setPastYear] = useState<number | null>(null);
-  const { data: pastData } = usePastYearly({ year: pastYear || undefined, region: occRegion || undefined });
-  const { data: futureData } = useFutureProjection();
+  // Unified timeline hooks
+  const [tlRegion, setTlRegion] = useState('');
+  const [tlOccupation, setTlOccupation] = useState('');
+  const [tlIscoGroup, setTlIscoGroup] = useState('');
+  const { data: timeline } = useUnifiedTimeline({
+    region: tlRegion || undefined,
+    occupation: tlOccupation || undefined,
+    isco_group: tlIscoGroup || undefined,
+  });
 
   // Occupation comparison hooks
   const { data: iscoGroups } = useISCOGroupComparison({ region: occRegion || undefined });
@@ -582,146 +587,189 @@ const DashboardPage = () => {
       </DataStory>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* SECTION 2b: PAST & FUTURE                                         */}
+      {/* SECTION 2b: TIMELINE — Past, Present & Future (filter-driven)     */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-        {/* LEFT: PAST (2015-2019) */}
-        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900">{t('الماضي — اتجاه العمالة', 'Past — Employment Trend')}</h3>
-              <p className="text-[10px] text-gray-400">2015-2019 • {t('انقر على سنة لعرض التفاصيل', 'Click a year for detail')}</p>
-            </div>
-            <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-semibold">REAL</span>
+      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{t('الجدول الزمني — الماضي والحاضر والمستقبل', 'Timeline — Past, Present & Future')}</h2>
+            <p className="text-[10px] text-gray-400">{t('اختر الفلاتر لتخصيص العرض — كل شيء يتغير حسب اختيارك', 'Select filters to customize — everything updates based on your selection')}</p>
           </div>
+        </div>
 
-          {/* Area chart: workers by year — clickable dots */}
-          {(pastData?.yearly_trend?.length ?? 0) > 0 && (
-            <ResponsiveContainer width="100%" height={200}>
-              <ComposedChart data={pastData.yearly_trend}
-                onClick={(data: any) => {
-                  if (data?.activePayload?.[0]?.payload?.year) {
-                    const yr = data.activePayload[0].payload.year;
-                    setPastYear(pastYear === yr ? null : yr);
-                  }
-                }}>
-                <CartesianGrid {...GRID_PROPS} />
-                <XAxis dataKey="year" tick={AXIS_TICK_SM} />
-                <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                <Tooltip content={({ payload }) => {
-                  if (!payload?.length) return null;
-                  const d = payload[0]?.payload;
-                  return (
-                    <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
-                      <p className="font-semibold">{d?.year}</p>
-                      <p className="text-[#007DB5]">{t('العمال', 'Workers')}: {formatCompact(d?.workers)}</p>
-                      <p className="text-gray-400">{d?.occupations} {t('مهنة', 'occupations')}</p>
-                      <p className="text-[10px] text-gray-300 mt-1">{t('انقر لعرض التفاصيل', 'Click for details')}</p>
-                    </div>
-                  );
-                }} />
-                <defs>
-                  <linearGradient id="gPast" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#007DB5" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#007DB5" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="workers" fill="url(#gPast)" stroke="#007DB5" strokeWidth={2} cursor="pointer" />
-                {pastYear && <ReferenceLine x={pastYear} stroke="#003366" strokeDasharray="4 4" />}
-              </ComposedChart>
-            </ResponsiveContainer>
+        {/* FILTERS — Region, Occupation search, ISCO Group */}
+        <div className="flex flex-wrap gap-2 items-center p-3 bg-gray-50 rounded-xl">
+          <select value={tlRegion} onChange={e => setTlRegion(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+            <option value="">{t('كل المناطق', 'All Regions')}</option>
+            {(expFilters?.regions || []).map((r: any) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+
+          <select value={tlIscoGroup} onChange={e => setTlIscoGroup(e.target.value)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
+            <option value="">{t('كل فئات المهن', 'All ISCO Groups')}</option>
+            <option value="1">1 — Managers</option>
+            <option value="2">2 — Professionals</option>
+            <option value="3">3 — Technicians</option>
+            <option value="4">4 — Clerical Support</option>
+            <option value="5">5 — Service & Sales</option>
+            <option value="6">6 — Agriculture</option>
+            <option value="7">7 — Craft & Trade</option>
+            <option value="8">8 — Machine Operators</option>
+            <option value="9">9 — Elementary</option>
+          </select>
+
+          <input type="text" value={tlOccupation} onChange={e => setTlOccupation(e.target.value)}
+            placeholder={t('بحث عن مهنة...', 'Search occupation...')}
+            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white w-44" />
+
+          {(tlRegion || tlOccupation || tlIscoGroup) && (
+            <button onClick={() => { setTlRegion(''); setTlOccupation(''); setTlIscoGroup(''); }}
+              className="text-[10px] text-gray-400 hover:text-gray-600 px-2 py-1 border border-gray-200 rounded-lg">
+              ✕ {t('مسح الكل', 'Clear all')}
+            </button>
           )}
 
-          {/* Year detail — occupations for selected year */}
-          {pastYear && (pastData?.occupations?.length ?? 0) > 0 && (
-            <div className="border-t border-gray-100 pt-3">
-              <h4 className="text-[10px] font-semibold text-gray-500 uppercase mb-2">{t('أعلى المهن في', 'Top Occupations in')} {pastYear}</h4>
-              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-                {pastData.occupations.map((o: any, i: number) => (
+          {/* Active filter badges */}
+          <div className="flex gap-1 ml-auto">
+            {tlRegion && <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#003366]/10 text-[#003366]">{tlRegion}</span>}
+            {tlIscoGroup && <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#007DB5]/10 text-[#007DB5]">ISCO {tlIscoGroup}</span>}
+            {tlOccupation && <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#C9A84C]/10 text-[#C9A84C]">{tlOccupation}</span>}
+          </div>
+        </div>
+
+        {/* UNIFIED CHART — Past (left) + Future (right) on same axis */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* PAST: Employment trend */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase">{t('الماضي — العمالة', 'Past — Employment')}</h3>
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-semibold">2015-2019</span>
+            </div>
+            {(timeline?.past?.length ?? 0) > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={timeline.past}>
+                  <defs>
+                    <linearGradient id="gTlPast" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#007DB5" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#007DB5" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="year" tick={AXIS_TICK_SM} />
+                  <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                  <Tooltip content={({ payload }) => {
+                    if (!payload?.length) return null;
+                    const d = payload[0]?.payload;
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
+                        <p className="font-semibold">{d?.year}</p>
+                        <p className="text-[#007DB5]">{t('العمال', 'Workers')}: <b>{formatCompact(d?.workers)}</b></p>
+                        <p className="text-gray-400">{d?.occupations} {t('مهنة', 'occupations')}</p>
+                      </div>
+                    );
+                  }} />
+                  <Area type="monotone" dataKey="workers" fill="url(#gTlPast)" stroke="#007DB5" strokeWidth={2} name={t('العمال', 'Workers')} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-gray-400 text-xs">{t('لا توجد بيانات', 'No data for this filter')}</div>
+            )}
+          </div>
+
+          {/* FUTURE: Projected supply vs demand */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase">{t('المستقبل — توقعات', 'Future — Projections')}</h3>
+              <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">2026-2030</span>
+            </div>
+            {(timeline?.future?.length ?? 0) > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={timeline.future}>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="year" tick={AXIS_TICK_SM} />
+                  <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                  <Tooltip content={({ payload }) => {
+                    if (!payload?.length) return null;
+                    const d = payload[0]?.payload;
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
+                        <p className="font-semibold">{d?.year} <span className="text-amber-600">(forecast)</span></p>
+                        <p className="text-[#007DB5]">{t('عرض متوقع', 'Projected Supply')}: <b>{formatCompact(d?.supply_projected)}</b></p>
+                        <p className="text-[#003366]">{t('طلب متوقع', 'Projected Demand')}: <b>{formatCompact(d?.demand_projected)}</b></p>
+                      </div>
+                    );
+                  }} />
+                  <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 9 }} />
+                  <Area type="monotone" dataKey="supply_projected" name={t('عرض متوقع', 'Supply (projected)')} fill="#007DB5" fillOpacity={0.15} stroke="#007DB5" strokeWidth={2} />
+                  <Line type="monotone" dataKey="demand_projected" name={t('طلب متوقع', 'Demand (projected)')} stroke="#003366" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3, fill: '#003366' }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-gray-400 text-xs">{t('لا توجد بيانات', 'No data for this filter')}</div>
+            )}
+          </div>
+        </div>
+
+        {/* OCCUPATION BREAKDOWN — Top supply vs top demand */}
+        <div className="border-t border-gray-100 pt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Top Supply Occupations */}
+            <div>
+              <h4 className="text-[10px] font-semibold text-[#007DB5] uppercase mb-2">
+                {t('أعلى مهن العرض (2015-2019)', 'Top Supply Occupations (Past)')}
+              </h4>
+              <div className="space-y-1.5">
+                {(timeline?.top_supply_occupations || []).slice(0, 8).map((o: any, i: number) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-700 truncate w-[45%]">{o.occupation}</span>
+                    <span className="text-[10px] text-gray-700 truncate w-[50%]">{o.occupation}</span>
                     <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full bg-[#007DB5] rounded-full"
-                        style={{ width: `${Math.min(100, (o.workers / Math.max(pastData.occupations[0]?.workers || 1, 1)) * 100)}%` }} />
+                        style={{ width: `${Math.min(100, (o.workers / Math.max(timeline?.top_supply_occupations?.[0]?.workers || 1, 1)) * 100)}%` }} />
                     </div>
                     <span className="text-[10px] font-semibold text-[#007DB5] w-[15%] text-right">{formatCompact(o.workers)}</span>
                   </div>
                 ))}
+                {(timeline?.top_supply_occupations || []).length === 0 && (
+                  <p className="text-[10px] text-gray-400 italic">{t('لا توجد بيانات', 'No data')}</p>
+                )}
               </div>
-              <p className="text-[9px] text-gray-400 mt-2">{t('ملاحظة: الأرقام تقديرية (موزعة من فئات ISCO)', 'Note: Numbers are ESTIMATED (distributed from ISCO groups)')}</p>
             </div>
-          )}
-          {pastYear && (pastData?.occupations?.length ?? 0) === 0 && (
-            <p className="text-xs text-gray-400 text-center py-4">{t('لا توجد بيانات لهذه السنة', 'No data for this year')}</p>
-          )}
-        </div>
 
-        {/* RIGHT: FUTURE (2026-2030) */}
-        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
+            {/* Top Demand Occupations */}
             <div>
-              <h3 className="text-sm font-bold text-gray-900">{t('المستقبل — توقعات', 'Future — Projections')}</h3>
-              <p className="text-[10px] text-gray-400">2026-2030 • {t('تنبؤ بالذكاء الاصطناعي والنمو', 'AI + growth forecasting')}</p>
-            </div>
-            <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">FORECAST</span>
-          </div>
-
-          {/* Composed chart: graduates vs demand with AI impact */}
-          {(futureData?.projections?.length ?? 0) > 0 && (
-            <ResponsiveContainer width="100%" height={200}>
-              <ComposedChart data={futureData.projections}>
-                <CartesianGrid {...GRID_PROPS} />
-                <XAxis dataKey="year" tick={AXIS_TICK_SM} />
-                <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                <Tooltip content={({ payload }) => {
-                  if (!payload?.length) return null;
-                  const d = payload[0]?.payload;
-                  return (
-                    <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
-                      <p className="font-semibold">{d?.year} {t('(توقعات)', '(forecast)')}</p>
-                      <p className="text-[#007DB5]">{t('خريجون متوقعون', 'Expected Graduates')}: {formatCompact(d?.supply_graduates)}</p>
-                      <p className="text-[#003366]">{t('وظائف متوقعة', 'Expected Jobs')}: {formatCompact(d?.demand_jobs)}</p>
-                      <p className="text-[#C9A84C]">{t('وظائف يلغيها الذكاء', 'AI Displaced')}: -{formatCompact(d?.ai_displacement)}</p>
-                      <p className="text-[#2E7D6B]">{t('وظائف جديدة بالذكاء', 'AI New Jobs')}: +{formatCompact(d?.ai_new_jobs)}</p>
-                      <p className="text-gray-400 border-t mt-1 pt-1">{t('الفجوة', 'Gap')}: {formatCompact(d?.gap)}</p>
+              <h4 className="text-[10px] font-semibold text-[#003366] uppercase mb-2">
+                {t('أعلى مهن الطلب (2024-2025)', 'Top Demand Occupations (Present)')}
+              </h4>
+              <div className="space-y-1.5">
+                {(timeline?.top_demand_occupations || []).slice(0, 8).map((o: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-700 truncate w-[50%]">{o.occupation}</span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#003366] rounded-full"
+                        style={{ width: `${Math.min(100, (o.jobs / Math.max(timeline?.top_demand_occupations?.[0]?.jobs || 1, 1)) * 100)}%` }} />
                     </div>
-                  );
-                }} />
-                <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 9 }} />
-                <Area type="monotone" dataKey="supply_graduates" name={t('خريجون', 'Graduates')} fill="#007DB5" fillOpacity={0.15} stroke="#007DB5" strokeWidth={2} />
-                <Line type="monotone" dataKey="demand_jobs" name={t('وظائف (مع الذكاء)', 'Jobs (AI adjusted)')} stroke="#003366" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="demand_base" name={t('وظائف (أساسي)', 'Jobs (base)')} stroke="#C9A84C" strokeWidth={1} strokeDasharray="3 3" dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* Assumptions + methodology */}
-          {futureData?.methodology && (
-            <div className="border-t border-gray-100 pt-3 space-y-2">
-              <h4 className="text-[10px] font-semibold text-gray-500 uppercase">{t('المنهجية والافتراضات', 'Methodology & Assumptions')}</h4>
-              <div className="grid grid-cols-2 gap-2 text-[9px]">
-                <div className="p-2 rounded-lg bg-gray-50">
-                  <span className="text-gray-500">{t('نمو الالتحاق', 'Enrollment growth')}:</span>
-                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.enrollment_growth}/yr</span>
-                </div>
-                <div className="p-2 rounded-lg bg-gray-50">
-                  <span className="text-gray-500">{t('نمو الطلب', 'Demand growth')}:</span>
-                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.demand_growth}/yr</span>
-                </div>
-                <div className="p-2 rounded-lg bg-gray-50">
-                  <span className="text-gray-500">{t('معدل التخرج', 'Graduation rate')}:</span>
-                  <span className="font-semibold text-gray-700 ml-1">{futureData.assumptions?.graduation_rate}</span>
-                </div>
-                <div className="p-2 rounded-lg bg-gray-50">
-                  <span className="text-gray-500">{t('تأثير الذكاء', 'AI impact')}:</span>
-                  <span className="font-semibold text-gray-700 ml-1">-{futureData.assumptions?.ai_displacement_rate} / +{futureData.assumptions?.ai_new_job_rate}</span>
-                </div>
+                    <span className="text-[10px] font-semibold text-[#003366] w-[15%] text-right">{formatCompact(o.jobs)}</span>
+                  </div>
+                ))}
+                {(timeline?.top_demand_occupations || []).length === 0 && (
+                  <p className="text-[10px] text-gray-400 italic">{t('لا توجد بيانات', 'No data')}</p>
+                )}
               </div>
-              <p className="text-[8px] text-amber-600 bg-amber-50 px-2 py-1 rounded">{t('⚠️ جميع الأرقام المستقبلية تقديرات وليست بيانات فعلية', '⚠️ ALL future numbers are PROJECTIONS based on assumptions, not measured data')}</p>
             </div>
-          )}
+          </div>
         </div>
+
+        <InsightPanel
+          explanation={t(
+            'هذا القسم يتغير بالكامل حسب الفلاتر المختارة. بدون فلاتر = بيانات مجمعة لكل الإمارات والمهن.',
+            'This section updates entirely based on your filters. No filters = aggregated data across all regions and occupations.'
+          )}
+          severity="info" compact
+        />
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}

@@ -708,6 +708,14 @@ export function useRealSkillComparison(params?: { limit?: number; search?: strin
   });
 }
 
+export function useUnifiedTimeline(params?: { region?: string; occupation?: string; isco_group?: string }) {
+  return useQuery({
+    queryKey: ["unified-timeline", params],
+    queryFn: () => api.get<any>("/skill-matching/unified-timeline", params as any),
+    staleTime: 60_000,
+  });
+}
+
 export function usePastYearly(params?: { year?: number; region?: string; limit?: number }) {
   return useQuery({
     queryKey: ["past-yearly", params],

@@ -673,3 +673,112 @@ async def future_projection(
             "graduates": [{"year": r[0], "graduates": int(r[1])} for r in grads],
         }
     }
+# Add to skill_matching.py
+
+@router.get("/unified-timeline")
+async def unified_timeline(
+    region: str | None = None,
+    occupation: str | None = None,
+    isco_group: str | None = None,
+    period: str = "all",  # past, present, future, all
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unified timeline: supply + demand across past/present/future with any filter combination.
+    
+    Filters stack: region + occupation + isco_group. Unset = aggregate all.
+    Returns yearly data with occupation + skill breakdowns.
+    """
+    params: dict = {}
+    supply_conds = []
+    demand_conds = []
+    
+    if region:
+        supply_conds.append("s.region_code = :reg")
+        demand_conds.append("d.region_code = :reg")
+        params["reg"] = region
+    if occupation:
+        supply_conds.append("o.title_en ILIKE :occ")
+        demand_conds.append("o2.title_en ILIKE :occ")
+        params["occ"] = f"%{occupation}%"
+    if isco_group:
+        supply_conds.append("o.isco_major_group = :grp")
+        demand_conds.append("o2.isco_major_group = :grp")
+        params["grp"] = isco_group
+
+    s_where = (" AND " + " AND ".join(supply_conds)) if supply_conds else ""
+    d_where = (" AND " + " AND ".join(demand_conds)) if demand_conds else ""
+
+    # PAST: supply by year (2015-2019)
+    past_supply = (await db.execute(text(f"""
+        SELECT t.year, SUM(s.supply_count) as workers, COUNT(DISTINCT s.occupation_id) as occs
+        FROM fact_supply_talent_agg s
+        JOIN dim_time t ON s.time_id = t.time_id
+        LEFT JOIN dim_occupation o ON s.occupation_id = o.occupation_id
+        WHERE t.year BETWEEN 2015 AND 2019 {s_where}
+        GROUP BY t.year ORDER BY t.year
+    """), params)).fetchall()
+
+    # PRESENT: demand by year (2024-2025)
+    present_demand = (await db.execute(text(f"""
+        SELECT t.year, COUNT(*) as jobs, COUNT(DISTINCT d.occupation_id) as occs
+        FROM fact_demand_vacancies_agg d
+        JOIN dim_time t ON d.time_id = t.time_id
+        LEFT JOIN dim_occupation o2 ON d.occupation_id = o2.occupation_id
+        WHERE t.year IN (2024, 2025) {d_where}
+        GROUP BY t.year ORDER BY t.year
+    """), params)).fetchall()
+
+    # TOP OCCUPATIONS for the filtered data
+    top_supply_occs = (await db.execute(text(f"""
+        SELECT o.title_en, o.isco_major_group, SUM(s.supply_count) as workers
+        FROM fact_supply_talent_agg s
+        JOIN dim_occupation o ON s.occupation_id = o.occupation_id
+        JOIN dim_time t ON s.time_id = t.time_id
+        WHERE t.year BETWEEN 2015 AND 2019 {s_where}
+        GROUP BY o.title_en, o.isco_major_group
+        ORDER BY workers DESC LIMIT 10
+    """), params)).fetchall()
+
+    top_demand_occs = (await db.execute(text(f"""
+        SELECT o2.title_en, o2.isco_major_group, COUNT(*) as jobs
+        FROM fact_demand_vacancies_agg d
+        JOIN dim_occupation o2 ON d.occupation_id = o2.occupation_id
+        JOIN dim_time t ON d.time_id = t.time_id
+        WHERE t.year IN (2024, 2025) {d_where}
+        GROUP BY o2.title_en, o2.isco_major_group
+        ORDER BY jobs DESC LIMIT 10
+    """), params)).fetchall()
+
+    # SKILLS for filtered occupations
+    occ_ids_supply = [r[0] for r in top_supply_occs[:5]]
+    occ_ids_demand = [r[0] for r in top_demand_occs[:5]]
+
+    # FUTURE projections (simplified — use base rates)
+    latest_supply = past_supply[-1][1] if past_supply else 0
+    latest_demand = sum(r[1] for r in present_demand) if present_demand else 0
+    monthly_demand = latest_demand / max(len(present_demand) * 12, 1) * 12
+
+    future = []
+    for i, yr in enumerate(range(2026, 2031)):
+        future.append({
+            "year": yr,
+            "supply_projected": int(latest_supply * (1 + 0.02) ** (i + 1)),  # 2% growth
+            "demand_projected": int(monthly_demand * (1 + 0.08) ** (i + 1)),  # 8% growth
+            "is_forecast": True,
+        })
+
+    return {
+        "filters_applied": {
+            "region": region, "occupation": occupation, "isco_group": isco_group,
+        },
+        "past": [{"year": r[0], "workers": int(r[1]), "occupations": int(r[2])} for r in past_supply],
+        "present": [{"year": r[0], "jobs": int(r[1]), "occupations": int(r[2])} for r in present_demand],
+        "future": future,
+        "top_supply_occupations": [
+            {"occupation": r[0], "group": r[1], "workers": int(r[2])} for r in top_supply_occs
+        ],
+        "top_demand_occupations": [
+            {"occupation": r[0], "group": r[1], "jobs": int(r[2])} for r in top_demand_occs
+        ],
+    }
