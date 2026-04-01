@@ -482,50 +482,112 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* Skill Drill-Down (when occupation clicked) */}
+        {/* Skill Drill-Down — 3-column heatmap comparison */}
         {selectedOccId && occSkills && (
-          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+          <div className="p-5 rounded-xl bg-gray-50 border border-gray-100 space-y-4">
+            {/* Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">{occSkills.occupation?.title}</h3>
-                <p className="text-[10px] text-gray-400">ISCO: {occSkills.occupation?.isco} • {occSkills.total_skills} skills ({occSkills.essential_count} essential) • {occSkills.supplied_count} taught in courses</p>
+                <p className="text-[10px] text-gray-400">
+                  ISCO: {occSkills.occupation?.isco} •
+                  {occSkills.total_skills} ESCO skills ({occSkills.essential_count} essential, {occSkills.total_skills - occSkills.essential_count} optional) •
+                  <span className="text-[#007DB5] font-semibold"> {occSkills.supplied_count} taught in courses</span> •
+                  <span className="text-gray-500"> {occSkills.total_skills - occSkills.supplied_count} NOT taught</span>
+                </p>
               </div>
-              <button onClick={() => setSelectedOccId(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+              <button onClick={() => setSelectedOccId(null)} className="p-1.5 rounded-lg hover:bg-gray-200"><X className="w-4 h-4 text-gray-400" /></button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto">
-              {/* LEFT: Demanded skills */}
-              <div>
-                <h4 className="text-[10px] font-semibold text-[#003366] uppercase mb-2">{t('مهارات مطلوبة', 'Skills Required')} ({occSkills.essential_count} essential)</h4>
-                <div className="space-y-1">
-                  {(occSkills.skills || []).filter((s: any) => s.relation === 'essential').slice(0, 20).map((s: any) => (
-                    <div key={s.skill_id} className="flex items-center justify-between py-1 text-[10px] border-b border-gray-100">
-                      <span className="text-gray-700 truncate max-w-[60%]">{s.skill}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[#003366] font-semibold">{formatCompact(s.demand_jobs)} jobs</span>
-                        {s.supply_courses > 0 && <span className="text-[#007DB5]">{s.supply_courses} courses</span>}
-                        {s.supply_courses === 0 && <span className="text-gray-300">no courses</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* 3 KPI summary cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg bg-white border border-gray-100 text-center">
+                <div className="text-lg font-bold text-gray-900">{occSkills.total_skills}</div>
+                <div className="text-[9px] text-gray-500">{t('مهارات ESCO المطلوبة', 'ESCO Skills Required')}</div>
               </div>
+              <div className="p-3 rounded-lg bg-white border border-gray-100 text-center">
+                <div className="text-lg font-bold text-[#003366]">{occSkills.essential_count}</div>
+                <div className="text-[9px] text-gray-500">{t('مطلوبة من الصناعة', 'Industry Essential')}</div>
+              </div>
+              <div className="p-3 rounded-lg bg-white border border-gray-100 text-center">
+                <div className="text-lg font-bold text-[#007DB5]">{occSkills.supplied_count}</div>
+                <div className="text-[9px] text-gray-500">{t('تُدرَّس في الجامعات', 'Taught in Universities')}</div>
+              </div>
+            </div>
 
-              {/* RIGHT: Supplied skills (taught in universities) */}
-              <div>
-                <h4 className="text-[10px] font-semibold text-[#007DB5] uppercase mb-2">{t('مهارات متوفرة في الجامعات', 'Skills Taught in Universities')}</h4>
-                <div className="space-y-1">
-                  {(occSkills.skills || []).filter((s: any) => s.supply_courses > 0).slice(0, 20).map((s: any) => (
-                    <div key={s.skill_id} className="flex items-center justify-between py-1 text-[10px] border-b border-gray-100">
-                      <span className="text-gray-700 truncate max-w-[50%]">{s.skill}</span>
-                      <span className="text-[#007DB5] font-semibold">{s.supply_courses} courses</span>
-                    </div>
-                  ))}
-                  {(occSkills.skills || []).filter((s: any) => s.supply_courses > 0).length === 0 && (
-                    <p className="text-[10px] text-gray-400 italic py-2">{t('لا توجد مقررات تُدرّس مهارات هذه المهنة', 'No university courses teach skills for this occupation')}</p>
-                  )}
-                </div>
-              </div>
+            {/* Heatmap table — all skills with 3 columns */}
+            <div className="overflow-auto max-h-[350px]">
+              <table className="w-full text-[10px]">
+                <thead className="sticky top-0 bg-gray-50 z-10">
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 font-semibold text-gray-500 w-[35%]">{t('المهارة', 'Skill')}</th>
+                    <th className="text-center py-2 px-2 font-semibold text-gray-500 w-[10%]">{t('النوع', 'Type')}</th>
+                    <th className="text-center py-2 px-2 font-semibold text-[#003366] w-[15%]">{t('مطلوبة ESCO', 'ESCO Required')}</th>
+                    <th className="text-center py-2 px-2 font-semibold text-[#003366] w-[15%]">{t('طلب الصناعة', 'Industry Demand')}</th>
+                    <th className="text-center py-2 px-2 font-semibold text-[#007DB5] w-[15%]">{t('عرض التعليم', 'Education Supply')}</th>
+                    <th className="text-center py-2 px-2 font-semibold text-gray-500 w-[10%]">{t('الحالة', 'Status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(occSkills.skills || []).map((s: any) => {
+                    const hasIndustry = s.demand_jobs > 0;
+                    const hasCourses = s.supply_courses > 0;
+                    const isEssential = s.relation === 'essential';
+                    // Heatmap color: green = both sides, amber = demanded not taught, gray = optional
+                    const rowBg = hasCourses && hasIndustry ? 'bg-[#007DB5]/5'
+                      : hasIndustry && !hasCourses ? 'bg-[#C9A84C]/8'
+                      : 'bg-white';
+                    return (
+                      <tr key={s.skill_id} className={`border-b border-gray-100 ${rowBg}`}>
+                        <td className="py-1.5 px-2 text-gray-800 truncate max-w-[200px]" title={s.skill}>{s.skill}</td>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-medium ${
+                            s.type === 'knowledge' ? 'bg-[#003366]/10 text-[#003366]'
+                            : s.type === 'technology' ? 'bg-[#C9A84C]/10 text-[#C9A84C]'
+                            : 'bg-[#007DB5]/10 text-[#007DB5]'
+                          }`}>{(s.type || '').replace('skill/competence','skill')}</span>
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className={`inline-block w-5 h-5 rounded-full text-[8px] font-bold leading-5 text-center ${
+                            isEssential ? 'bg-[#003366] text-white' : 'bg-gray-200 text-gray-500'
+                          }`}>{isEssential ? 'E' : 'O'}</span>
+                        </td>
+                        <td className="py-1.5 px-2 text-center font-semibold tabular-nums">
+                          {hasIndustry ? (
+                            <span className="text-[#003366]">{formatCompact(s.demand_jobs)}</span>
+                          ) : (
+                            <span className="text-gray-300">0</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center font-semibold tabular-nums">
+                          {hasCourses ? (
+                            <span className="text-[#007DB5]">{s.supply_courses} {t('مقرر', 'courses')}</span>
+                          ) : (
+                            <span className="text-gray-300">{t('لا يوجد', 'none')}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-2 text-center">
+                          {hasCourses && hasIndustry ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#007DB5]/10 text-[#007DB5] font-semibold">{t('متطابق', 'Match')}</span>
+                          ) : hasIndustry && !hasCourses ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#C9A84C]/15 text-[#C9A84C] font-semibold">{t('فجوة', 'Gap')}</span>
+                          ) : (
+                            <span className="text-[9px] text-gray-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 text-[9px] text-gray-400 pt-2 border-t border-gray-200">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[#007DB5]/10 border border-[#007DB5]/20" /> {t('متطابق — مطلوب ومُدرَّس', 'Match — demanded & taught')}</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-[#C9A84C]/15 border border-[#C9A84C]/20" /> {t('فجوة — مطلوب ولكن غير مُدرَّس', 'Gap — demanded but NOT taught')}</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded-full bg-[#003366] text-white text-[7px] text-center leading-4 font-bold">E</span> {t('أساسي', 'Essential')}</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[7px] text-center leading-4 font-bold">O</span> {t('اختياري', 'Optional')}</span>
             </div>
           </div>
         )}
