@@ -110,9 +110,13 @@ const DashboardPage = () => {
   const { data: expSkillDetail } = useExplorerSkillDetail(expSelectedSkill);
 
   // Occupation comparison hooks
+  const [occSort, setOccSort] = useState('demand_jobs');
+  const [occOrder, setOccOrder] = useState<'desc' | 'asc'>('desc');
+
   const { data: occComparison, isLoading: occLoading } = useRealOccupationComparison({
-    limit: 15, search: occSearch || undefined, region: occRegion || undefined, page: occPage
-  });
+    limit: 15, search: occSearch || undefined, region: occRegion || undefined, page: occPage,
+    sort: occSort, order: occOrder,
+  } as any);
   const { data: occSkills } = useOccupationSkillsDetail(selectedOccId);
 
   /* ── Chat state ──────────────────────────────── */
@@ -352,6 +356,19 @@ const DashboardPage = () => {
             ))}
           </select>
           {occSearch && <button onClick={() => { setOccSearch(''); setOccPage(1); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Clear</button>}
+
+          {/* Sort */}
+          <select value={occSort} onChange={e => { setOccSort(e.target.value); setOccPage(1); }}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5">
+            <option value="demand_jobs">{t('ترتيب: الوظائف', 'Sort: Jobs')}</option>
+            <option value="supply_workers">{t('ترتيب: العمال', 'Sort: Workers')}</option>
+            <option value="gap">{t('ترتيب: الفجوة', 'Sort: Gap')}</option>
+            <option value="skill_count">{t('ترتيب: المهارات', 'Sort: Skills')}</option>
+          </select>
+          <button onClick={() => { setOccOrder(o => o === 'desc' ? 'asc' : 'desc'); setOccPage(1); }}
+            className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+            {occOrder === 'desc' ? '↓ Desc' : '↑ Asc'}
+          </button>
         </div>
 
         {/* Occupation Table */}
@@ -374,19 +391,24 @@ const DashboardPage = () => {
                   className={`border-b border-gray-50 cursor-pointer transition-colors ${
                     selectedOccId === occ.occupation_id ? 'bg-[#003366]/5' : 'hover:bg-gray-50'
                   }`}>
-                  <td className="py-2 px-3 font-medium text-gray-800 max-w-[220px] truncate">{occ.occupation}</td>
-                  <td className="py-2 px-3 text-gray-400 text-[10px] font-mono">{occ.isco || '—'}</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-[#007DB5] font-semibold">{formatCompact(occ.supply_workers)}</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-[#003366] font-semibold">{formatCompact(occ.demand_jobs)}</td>
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden flex">
-                        <div className="h-full bg-[#007DB5]" style={{width:`${Math.min(50, occ.supply_workers > 0 ? 50 : 0)}%`}} />
-                        <div className="h-full bg-[#003366]" style={{width:`${Math.min(50, occ.demand_jobs > 0 ? Math.min(50, occ.demand_jobs / Math.max(occ.supply_workers, 1) * 5000) : 0)}%`}} />
-                      </div>
-                    </div>
+                  <td className="py-2 px-3 font-medium text-gray-800 max-w-[220px] truncate">
+                    <span className="cursor-pointer hover:text-[#003366] hover:underline">{occ.occupation}</span>
                   </td>
-                  <td className="py-2 px-3 text-right text-gray-400 tabular-nums">{occ.skills}</td>
+                  <td className="py-2 px-3 text-gray-400 text-[10px] font-mono">{occ.isco || '—'}</td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[#007DB5] font-semibold">
+                    <Link to="/knowledge-base?table=fact_supply_talent_agg" className="hover:underline">{formatCompact(occ.supply_workers)}</Link>
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[#003366] font-semibold">
+                    <Link to="/knowledge-base?table=fact_demand_vacancies_agg" className="hover:underline">{formatCompact(occ.demand_jobs)}</Link>
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-xs">
+                    {occ.supply_workers > 0
+                      ? `${(occ.demand_jobs / occ.supply_workers * 100).toFixed(2)}%`
+                      : occ.demand_jobs > 0 ? '∞' : '—'}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-400 tabular-nums">
+                    <Link to={`/knowledge-base?table=fact_occupation_skills`} className="hover:underline hover:text-[#003366]">{occ.skills}</Link>
+                  </td>
                 </tr>
               ))}
               {occLoading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>}
