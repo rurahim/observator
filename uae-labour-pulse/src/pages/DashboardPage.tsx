@@ -24,7 +24,7 @@ import {
   useSupplyDashboard, useDashboardSummary, useDemandInsights,
   useAIImpact, useKBStats, useSendMessage,
   useSkillMatchingSummary, useDemandedSkills, useSuppliedSkills, useSkillComparison,
-  useExplorerFilters, useExplorerBySkill, useExplorerByOccupation, useExplorerByInstitution, useExplorerSkillDetail,
+  useExplorerFilters,
   useRealOccupationComparison, useOccupationSkillsDetail, useISCOGroupComparison,
 } from '@/api/hooks';
 import { formatCompact, formatNumber, formatPercent } from '@/utils/formatters';
@@ -72,42 +72,12 @@ const DashboardPage = () => {
   const { data: suppliedSkillsData } = useSuppliedSkills({ limit: 20 });
   const chat = useSendMessage();
 
-  // Explorer hooks (always called — never conditional)
-  const { data: expFilters } = useExplorerFilters();
-  const [expView, setExpView] = useState<'skill' | 'occupation' | 'institution'>('skill');
-  const [expRegion, setExpRegion] = useState('');
-  const [expSearch, setExpSearch] = useState('');
-  const [expSkillType, setExpSkillType] = useState('');
-  const [expSelectedSkill, setExpSelectedSkill] = useState<number | null>(null);
-
   // Occupation comparison state
+  const { data: expFilters } = useExplorerFilters();
   const [occSearch, setOccSearch] = useState('');
   const [occRegion, setOccRegion] = useState('');
   const [occPage, setOccPage] = useState(1);
   const [selectedOccId, setSelectedOccId] = useState<number | null>(null);
-
-  const expSkillParams = useMemo(() => {
-    const p: Record<string, any> = { limit: 15 };
-    if (expSearch) p.search = expSearch;
-    if (expSkillType) p.skill_type = expSkillType;
-    return p;
-  }, [expSearch, expSkillType]);
-  const expOccParams = useMemo(() => {
-    const p: Record<string, any> = { limit: 15 };
-    if (expSearch) p.search = expSearch;
-    if (expRegion) p.region = expRegion;
-    return p;
-  }, [expSearch, expRegion]);
-  const expInstParams = useMemo(() => {
-    const p: Record<string, any> = {};
-    if (expRegion) p.region = expRegion;
-    return p;
-  }, [expRegion]);
-
-  const { data: expSkills } = useExplorerBySkill(expSkillParams);
-  const { data: expOccs } = useExplorerByOccupation(expOccParams);
-  const { data: expInsts } = useExplorerByInstitution(expInstParams);
-  const { data: expSkillDetail } = useExplorerSkillDetail(expSelectedSkill);
 
   // Occupation comparison hooks
   const { data: iscoGroups } = useISCOGroupComparison({ region: occRegion || undefined });
@@ -709,192 +679,6 @@ const DashboardPage = () => {
           })()}
           severity="info" compact
         />
-      </div>
-      </DataStory>
-
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* SECTION 2c: DRILL-DOWN EXPLORER — Filter & Explore at Any Level   */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <DataStory
-        title="Supply-Demand Explorer"
-        method="Interactive drill-down across skills, occupations, and institutions. Skills: ESCO essential mappings from 35.7K jobs vs 19.2K course token matches. Occupations: gap cube (supply from Bayanat/MOHRE vs demand from LinkedIn). Institutions: 168 CAA/Bayanat institutions with 19.2K parsed catalog courses."
-        quality="mixed"
-        tables={[{name:'vw_skill_gap', label:'Skill Gap (13K)'}, {name:'vw_gap_cube', label:'Gap Cube (2.7K)'}, {name:'dim_course', label:'Courses (19.2K)'}, {name:'dim_institution', label:'Institutions (168)'}]}
-        caveats="Skill demand uses essential skills only (filtered from 13K total). Occupation gap depends on ISCO mapping quality."
-      >
-      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-gray-900">{t('مستكشف العرض والطلب', 'Supply-Demand Explorer')}</h2>
-          <span className="text-[10px] text-gray-400">{t('اختر العرض والفلاتر للتعمق', 'Select view & filters to drill down')}</span>
-        </div>
-
-        {/* View tabs + Filters */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          {/* View selector */}
-          {[
-            { key: 'skill' as const, label: t('بالمهارة', 'By Skill'), icon: Layers },
-            { key: 'occupation' as const, label: t('بالمهنة', 'By Occupation'), icon: Briefcase },
-            { key: 'institution' as const, label: t('بالجامعة', 'By University'), icon: GraduationCap },
-          ].map(v => (
-            <button key={v.key} onClick={() => { setExpView(v.key); setExpSelectedSkill(null); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                expView === v.key ? 'bg-[#003366] text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}>
-              <v.icon className="w-3.5 h-3.5" />
-              {v.label}
-            </button>
-          ))}
-
-          <span className="w-px h-6 bg-gray-200" />
-
-          {/* Search */}
-          <input type="text" value={expSearch} onChange={e => setExpSearch(e.target.value)}
-            placeholder={t('بحث...', 'Search...')}
-            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg w-40 focus:outline-none focus:ring-1 focus:ring-[#003366]/20" />
-
-          {/* Region filter */}
-          <select value={expRegion} onChange={e => setExpRegion(e.target.value)}
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5">
-            <option value="">{t('كل المناطق', 'All Regions')}</option>
-            {(expFilters?.regions || []).map((r: any) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-
-          {/* Skill type filter (for skill view) */}
-          {expView === 'skill' && (
-            <select value={expSkillType} onChange={e => setExpSkillType(e.target.value)}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5">
-              <option value="">{t('كل الأنواع', 'All Types')}</option>
-              {(expFilters?.skill_types || []).map((st: string) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {/* Results table */}
-        <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-          {expView === 'skill' && (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-white border-b border-gray-200">
-                <tr>
-                  <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('المهارة', 'Skill')}</th>
-                  <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('النوع', 'Type')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('الطلب', 'Demand')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('العرض', 'Supply')}</th>
-                  <th className="py-2 px-3 font-semibold text-gray-500 w-32">{t('الفجوة', 'Gap')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(expSkills?.skills || []).map((s: any, i: number) => (
-                  <tr key={s.skill_id || i}
-                    className={`border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors ${expSelectedSkill === s.skill_id ? 'bg-[#003366]/5' : ''}`}
-                    onClick={() => setExpSelectedSkill(expSelectedSkill === s.skill_id ? null : s.skill_id)}>
-                    <td className="py-2 px-3 font-medium text-gray-800 max-w-[200px] truncate">{s.skill}</td>
-                    <td className="py-2 px-3 text-gray-400">{s.type}</td>
-                    <td className="py-2 px-3 text-right font-semibold text-[#003366] tabular-nums">{formatCompact(s.demand)}</td>
-                    <td className="py-2 px-3 text-right font-semibold text-[#007DB5] tabular-nums">{formatCompact(s.supply)}</td>
-                    <td className="py-2 px-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden flex">
-                          <div className="h-full bg-[#003366] rounded-l-full" style={{ width: `${Math.min(50, (s.demand / Math.max(s.demand + s.supply, 1)) * 100)}%` }} />
-                          <div className="h-full bg-[#007DB5] rounded-r-full" style={{ width: `${Math.min(50, (s.supply / Math.max(s.demand + s.supply, 1)) * 100)}%` }} />
-                        </div>
-                        <span className="text-[10px] font-semibold text-gray-500 w-10 text-right">{formatCompact(s.gap)}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {expView === 'occupation' && (
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-white border-b border-gray-200">
-                <tr>
-                  <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('المهنة', 'Occupation')}</th>
-                  <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('الإمارة', 'Region')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('العرض', 'Supply')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('الطلب', 'Demand')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('الفجوة', 'Gap')}</th>
-                  <th className="text-right py-2 px-3 font-semibold text-gray-500">AI %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(expOccs?.occupations || []).map((o: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 px-3 font-medium text-gray-800 max-w-[200px] truncate">{o.occupation}</td>
-                    <td className="py-2 px-3 text-gray-400">{o.emirate || o.region}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-[#007DB5]">{formatCompact(o.supply)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-[#003366]">{formatCompact(o.demand)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums font-semibold" style={{ color: o.gap < 0 ? '#003366' : '#007DB5' }}>{formatCompact(o.gap)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-gray-400">{o.ai_exposure ? `${o.ai_exposure.toFixed(0)}%` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {expView === 'institution' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(expInsts?.institutions || []).slice(0, 12).map((inst: any, i: number) => (
-                <div key={i} className="p-3 rounded-xl border border-gray-100 hover:shadow-sm transition-shadow">
-                  <h4 className="text-xs font-semibold text-gray-900 truncate mb-2">{inst.institution}</h4>
-                  <div className="flex gap-3 text-[10px] text-gray-500">
-                    <span><span className="font-semibold text-[#003366]">{inst.courses}</span> {t('مقرر', 'courses')}</span>
-                    <span><span className="font-semibold text-[#007DB5]">{inst.skills_taught}</span> {t('مهارة', 'skills')}</span>
-                    <span><span className="font-semibold text-[#C9A84C]">{inst.programs}</span> {t('برنامج', 'programs')}</span>
-                  </div>
-                  <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#003366] to-[#007DB5]"
-                      style={{ width: `${Math.min(100, (inst.skills_taught / 1200) * 100)}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Skill detail panel — when a skill is clicked */}
-        {expSelectedSkill && expSkillDetail && (
-          <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-gray-900">{expSkillDetail.skill?.name}</h3>
-              <button onClick={() => setExpSelectedSkill(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-[10px] font-semibold text-[#003366] uppercase mb-2">{t('وظائف تطلب هذه المهارة', 'Jobs Requiring This Skill')} ({expSkillDetail.demand?.total_jobs ?? 0})</h4>
-                <div className="space-y-1 max-h-[150px] overflow-y-auto">
-                  {(expSkillDetail.demand?.jobs || []).map((j: any, i: number) => (
-                    <div key={i} className="flex justify-between text-[10px] py-1 border-b border-gray-100">
-                      <span className="text-gray-700 truncate max-w-[60%]">{j.occupation || '—'}</span>
-                      <span className="text-gray-400">{j.region} • {j.experience || '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-semibold text-[#007DB5] uppercase mb-2">{t('مقررات تدرّس هذه المهارة', 'Courses Teaching This Skill')} ({expSkillDetail.supply?.total_courses ?? 0})</h4>
-                <div className="space-y-1 max-h-[150px] overflow-y-auto">
-                  {(expSkillDetail.supply?.courses || []).map((c: any, i: number) => (
-                    <div key={i} className="flex justify-between text-[10px] py-1 border-b border-gray-100">
-                      <span className="text-gray-700 truncate max-w-[50%]">{c.course}</span>
-                      <span className="text-gray-400 truncate max-w-[40%]">{c.institution}</span>
-                    </div>
-                  ))}
-                  {(expSkillDetail.supply?.total_courses ?? 0) === 0 && (
-                    <p className="text-[10px] text-gray-400 italic">{t('لا توجد مقررات تدرّس هذه المهارة', 'No courses teach this skill')}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       </DataStory>
 
