@@ -371,53 +371,54 @@ const DashboardPage = () => {
           </button>
         </div>
 
-        {/* Occupation Table */}
-        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-white border-b border-gray-200 z-10">
-              <tr>
-                <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('المهنة', 'Occupation')}</th>
-                <th className="text-left py-2 px-3 font-semibold text-gray-500">ISCO</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('العمال', 'Workers')}</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('الوظائف', 'Jobs')}</th>
-                <th className="py-2 px-3 font-semibold text-gray-500 w-28">{t('النسبة', 'Ratio')}</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('المهارات', 'Skills')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(occComparison?.occupations || []).map((occ: any) => (
-                <tr key={occ.occupation_id}
-                  onClick={() => setSelectedOccId(selectedOccId === occ.occupation_id ? null : occ.occupation_id)}
-                  className={`border-b border-gray-50 cursor-pointer transition-colors ${
-                    selectedOccId === occ.occupation_id ? 'bg-[#003366]/5' : 'hover:bg-gray-50'
-                  }`}>
-                  <td className="py-2 px-3 font-medium text-gray-800 max-w-[220px] truncate">
-                    <span className="cursor-pointer hover:text-[#003366] hover:underline">{occ.occupation}</span>
-                  </td>
-                  <td className="py-2 px-3 text-gray-400 text-[10px] font-mono">{occ.isco || '—'}</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-[#007DB5] font-semibold">
-                    <Link to="/knowledge-base?table=fact_supply_talent_agg" className="hover:underline">{formatCompact(occ.supply_workers)}</Link>
-                  </td>
-                  <td className="py-2 px-3 text-right tabular-nums text-[#003366] font-semibold">
-                    <Link to="/knowledge-base?table=fact_demand_vacancies_agg" className="hover:underline">{formatCompact(occ.demand_jobs)}</Link>
-                  </td>
-                  <td className="py-2 px-3 text-right tabular-nums text-xs">
-                    {occ.supply_workers > 0
-                      ? `${(occ.demand_jobs / occ.supply_workers * 100).toFixed(2)}%`
-                      : occ.demand_jobs > 0 ? '∞' : '—'}
-                  </td>
-                  <td className="py-2 px-3 text-right text-gray-400 tabular-nums">
-                    <Link to={`/knowledge-base?table=fact_occupation_skills`} className="hover:underline hover:text-[#003366]">{occ.skills}</Link>
-                  </td>
-                </tr>
-              ))}
-              {occLoading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>}
-              {!occLoading && (occComparison?.occupations || []).length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-gray-400">{t('لا توجد نتائج', 'No results')}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Occupation Chart — horizontal bars with workers (teal) vs jobs (navy) */}
+        {(occComparison?.occupations || []).length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={Math.max(400, (occComparison?.occupations?.length || 1) * 32)}>
+              <BarChart
+                data={(occComparison?.occupations || []).map((o: any) => ({
+                  ...o,
+                  name: (o.occupation || '').length > 25 ? o.occupation.slice(0, 23) + '...' : o.occupation,
+                  ratio: o.supply_workers > 0 ? `${(o.demand_jobs / o.supply_workers * 100).toFixed(2)}%` : o.demand_jobs > 0 ? '∞' : '—',
+                }))}
+                layout="vertical"
+                margin={{ left: 160, right: 60, top: 5, bottom: 5 }}
+                onClick={(data: any) => {
+                  if (data?.activePayload?.[0]?.payload?.occupation_id) {
+                    const id = data.activePayload[0].payload.occupation_id;
+                    setSelectedOccId(selectedOccId === id ? null : id);
+                  }
+                }}
+              >
+                <CartesianGrid {...GRID_PROPS} horizontal={false} />
+                <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#4A5568' }} width={155} />
+                <Tooltip content={({ payload, label }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0]?.payload;
+                  return (
+                    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs">
+                      <p className="font-semibold mb-1">{d?.occupation}</p>
+                      <p className="text-[#007DB5]">{t('العمال', 'Workers')}: <b>{formatCompact(d?.supply_workers)}</b></p>
+                      <p className="text-[#003366]">{t('الوظائف', 'Jobs')}: <b>{formatCompact(d?.demand_jobs)}</b></p>
+                      <p className="text-gray-400">{t('النسبة', 'Ratio')}: {d?.ratio}</p>
+                      <p className="text-gray-400">{t('المهارات', 'Skills')}: {d?.skills}</p>
+                      <p className="text-[10px] text-gray-300 mt-1 border-t pt-1">{t('انقر لعرض المهارات', 'Click for skill breakdown')}</p>
+                    </div>
+                  );
+                }} />
+                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="supply_workers" name={t('العمال الموظفون', 'Employed Workers')} fill="#007DB5" radius={[0, 3, 3, 0]} barSize={12} cursor="pointer" />
+                <Bar dataKey="demand_jobs" name={t('الوظائف المنشورة', 'Job Postings')} fill="#003366" radius={[0, 3, 3, 0]} barSize={12} cursor="pointer" />
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-[9px] text-gray-400 mt-1">{t('انقر على أي مهنة لعرض تفاصيل المهارات', 'Click any occupation bar to see skill details')} • {t('المصدر', 'Source')}: Bayanat (workers) + LinkedIn (jobs)</p>
+          </>
+        ) : occLoading ? (
+          <div className="h-[400px] flex items-center justify-center text-gray-400">{t('جاري التحميل...', 'Loading...')}</div>
+        ) : (
+          <div className="h-[200px] flex items-center justify-center text-gray-400">{t('لا توجد نتائج', 'No results')}</div>
+        )}
 
         {/* Pagination */}
         {(occComparison?.pages ?? 0) > 1 && (
