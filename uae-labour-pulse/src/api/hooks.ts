@@ -708,6 +708,15 @@ export function useRealSkillComparison(params?: { limit?: number; search?: strin
   });
 }
 
+export function useOccupationSkillsDetail(occupationId: number | null) {
+  return useQuery({
+    queryKey: ["occ-skills-detail", occupationId],
+    queryFn: () => api.get<any>(`/skill-matching/occupation-skills/${occupationId}`),
+    staleTime: 60_000,
+    enabled: !!occupationId,
+  });
+}
+
 export function useRealOccupationComparison(params?: { limit?: number; search?: string; region?: string; page?: number }) {
   return useQuery({
     queryKey: ["real-occ-comparison", params],

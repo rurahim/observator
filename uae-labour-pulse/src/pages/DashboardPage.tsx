@@ -25,6 +25,7 @@ import {
   useAIImpact, useKBStats, useSendMessage,
   useSkillMatchingSummary, useDemandedSkills, useSuppliedSkills, useSkillComparison,
   useExplorerFilters, useExplorerBySkill, useExplorerByOccupation, useExplorerByInstitution, useExplorerSkillDetail,
+  useRealOccupationComparison, useOccupationSkillsDetail,
 } from '@/api/hooks';
 import { formatCompact, formatNumber, formatPercent } from '@/utils/formatters';
 import { COLORS, GRID_PROPS, AXIS_TICK, AXIS_TICK_SM, getSeriesColor } from '@/utils/chartColors';
@@ -79,6 +80,12 @@ const DashboardPage = () => {
   const [expSkillType, setExpSkillType] = useState('');
   const [expSelectedSkill, setExpSelectedSkill] = useState<number | null>(null);
 
+  // Occupation comparison state
+  const [occSearch, setOccSearch] = useState('');
+  const [occRegion, setOccRegion] = useState('');
+  const [occPage, setOccPage] = useState(1);
+  const [selectedOccId, setSelectedOccId] = useState<number | null>(null);
+
   const expSkillParams = useMemo(() => {
     const p: Record<string, any> = { limit: 15 };
     if (expSearch) p.search = expSearch;
@@ -101,6 +108,12 @@ const DashboardPage = () => {
   const { data: expOccs } = useExplorerByOccupation(expOccParams);
   const { data: expInsts } = useExplorerByInstitution(expInstParams);
   const { data: expSkillDetail } = useExplorerSkillDetail(expSelectedSkill);
+
+  // Occupation comparison hooks
+  const { data: occComparison, isLoading: occLoading } = useRealOccupationComparison({
+    limit: 15, search: occSearch || undefined, region: occRegion || undefined, page: occPage
+  });
+  const { data: occSkills } = useOccupationSkillsDetail(selectedOccId);
 
   /* ── Chat state ──────────────────────────────── */
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -309,212 +322,157 @@ const DashboardPage = () => {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* SECTION 2: SKILL GAP INTELLIGENCE — REDESIGNED                    */}
+      {/* SECTION 2: OCCUPATION SUPPLY-DEMAND COMPARISON                     */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <DataStory
-        title="Skill Gap Intelligence"
-        method="Compares 2,237 essential skills demanded by 35.7K LinkedIn jobs with 1,772 skills taught across 19.2K university courses. Skills inherited from ESCO occupation-skill mappings. Course-skill mapping via token matching against 21K ESCO labels."
-        quality="official+generated"
-        tables={[{name:'fact_job_skills', label:'Job Skills (3M)'}, {name:'fact_course_skills', label:'Course Skills (24.8K)'}, {name:'dim_skill', label:'ESCO Skills (21.5K)'}, {name:'vw_skill_gap', label:'Skill Gap View (13K)'}]}
-        caveats="Job skills inherited from ESCO occupation mappings (not extracted from JDs). Course skills from token matching (~60-70% accuracy). Some generic skills like 'mathematics' inflate demand counts."
-        sourceUrl="https://esco.ec.europa.eu/en/use-esco/download"
-      >
-      <div className="space-y-5">
-        {/* Header + 6 KPI metrics */}
-        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-navy" />
-                {t('تحليل فجوة المهارات', 'Skill Gap Intelligence')}
-              </h2>
-              <p className="text-[11px] text-gray-400">{t('مطابقة مهارات سوق العمل بمخرجات التعليم', 'Matching labour market skills with education output')}</p>
-            </div>
-            <div className="text-right text-[10px] text-gray-400">
-              <div>{t('المصادر', 'Sources')}: ESCO + LinkedIn + CAA + 100 University Catalogs</div>
-            </div>
+      <DataStory title="Occupation Supply vs Demand" quality="official+scraped"
+        method="Supply = employed workers per occupation from Bayanat/MOHRE census (2015-2019). Demand = LinkedIn job postings per occupation (2024-2025). Each mapped to ESCO occupations. Click any occupation to see its required skills."
+        tables={[{name:'fact_supply_talent_agg',label:'Employment Census (842K)'},{name:'fact_demand_vacancies_agg',label:'Job Postings (37K)'},{name:'fact_occupation_skills',label:'Occupation Skills (322K)'}]}
+        caveats="Supply (2015-2019) and demand (2024-2025) are from different time periods. Supply = currently employed workers, NOT available/unemployed. Gap comparison is indicative, not exact."
+        sourceUrl="https://bayanat.ae/en/dataset?groups=employment-labour">
+      <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{t('مقارنة العرض والطلب حسب المهنة', 'Supply vs Demand by Occupation')}</h2>
+            <p className="text-[11px] text-gray-400">{t('العرض = العمال الموظفون • الطلب = الوظائف المنشورة • انقر لعرض المهارات', 'Supply = employed workers • Demand = job postings • Click for skills breakdown')}</p>
           </div>
+          <span className="text-[10px] text-gray-400">{occComparison?.total ?? '—'} {t('مهنة', 'occupations')}</span>
+        </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: t('مهارات مطلوبة (أساسية)', 'Skills Demanded (Essential)'), value: formatCompact(skillComp?.stats?.total_demanded ?? skillMatch?.total_skills_demanded ?? 0), color: '#003366' },
-              { label: t('مهارات مُدرَّسة', 'Skills Taught'), value: formatCompact(skillComp?.stats?.total_supplied ?? skillMatch?.total_skills_supplied ?? 0), color: '#007DB5' },
-              { label: t('تطابق', 'Overlap'), value: formatCompact(skillComp?.stats?.overlap_count ?? skillMatch?.skill_overlap ?? 0), color: '#2E7D6B' },
-              { label: t('فجوة الطلب', 'Demand-Only Gap'), value: formatCompact(skillComp?.stats?.demand_only_count ?? 0), color: '#0A5C8A' },
-              { label: t('فائض العرض', 'Supply-Only Surplus'), value: formatCompact(skillComp?.stats?.supply_only_count ?? 0), color: '#C9A84C' },
-              { label: t('نسبة التغطية', 'Coverage %'), value: `${(skillMatch?.overlap_pct ?? 0).toFixed(1)}%`, color: '#4A90C4' },
-            ].map((kpi, i) => (
-              <div key={i} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50">
-                <div className="text-[10px] font-medium mb-1" style={{ color: kpi.color }}>{kpi.label}</div>
-                <div className="text-xl font-bold text-gray-900 tabular-nums">{kpi.value}</div>
-              </div>
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <input type="text" value={occSearch} onChange={e => { setOccSearch(e.target.value); setOccPage(1); setSelectedOccId(null); }}
+            placeholder={t('بحث عن مهنة...', 'Search occupation...')}
+            className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg w-48 focus:outline-none focus:ring-1 focus:ring-[#003366]/20" />
+          <select value={occRegion} onChange={e => { setOccRegion(e.target.value); setOccPage(1); setSelectedOccId(null); }}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5">
+            <option value="">{t('كل المناطق', 'All Regions')}</option>
+            {(expFilters?.regions || []).map((r: any) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
             ))}
-          </div>
+          </select>
+          {occSearch && <button onClick={() => { setOccSearch(''); setOccPage(1); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Clear</button>}
         </div>
 
-        {/* ROW 2: Butterfly/Diverging bar + Heatmap */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-          {/* LEFT: Skill Overlap — Demand vs Supply for SAME skills (butterfly chart) */}
-          <DataStory title="Overlapping Skills: Demand vs Supply" quality="official+generated"
-            method="Shows skills that appear in BOTH job postings AND university courses. Demand = count of jobs requiring this skill (essential only, from ESCO occupation-skill mappings for 35.7K LinkedIn jobs). Supply = count of courses teaching it (from token matching 19.2K university catalog courses against ESCO skills). Bars normalized to relative scale for visual comparison."
-            tables={[{name:'fact_job_skills', label:'Job Skills (3M rows)'}, {name:'fact_course_skills', label:'Course Skills (24.8K rows)'}, {name:'vw_skill_gap', label:'Skill Gap View (13K)'}]}
-            caveats="Demand numbers reflect ESCO occupation inheritance — all jobs mapped to an occupation inherit its full skill list. Supply matching is token-based (~60-70% accuracy)."
-            sourceUrl="https://esco.ec.europa.eu/en/use-esco/download">
-          <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-gray-900 mb-1">{t('مقارنة المهارات المتداخلة', 'Overlapping Skills: Demand vs Supply')}</h3>
-            <p className="text-[10px] text-gray-400 mb-3">{t('مهارات موجودة في كلا الجانبين — الطلب (أزرق) مقابل العرض (أخضر)', 'Skills present in BOTH sides — Demand (blue) vs Supply (teal)')}</p>
-            {(skillComp?.overlap?.length ?? 0) > 0 ? (
-              <ResponsiveContainer width="100%" height={Math.min(400, (skillComp.overlap.length || 1) * 32)}>
-                <BarChart data={(skillComp?.overlap || []).slice(0, 12).map((s: any) => ({
-                  ...s,
-                  // Normalize to make comparable (demand is much larger)
-                  demandNorm: Math.min(100, Math.round((s.demand / Math.max(...(skillComp?.overlap || []).map((x: any) => x.demand || 1))) * 100)),
-                  supplyNorm: Math.min(100, Math.round((s.supply / Math.max(...(skillComp?.overlap || []).map((x: any) => x.supply || 1))) * 100)),
-                }))} layout="vertical" margin={{ left: 120, right: 20 }}>
-                  <CartesianGrid {...GRID_PROPS} horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} tick={AXIS_TICK_SM} tickFormatter={(v: number) => `${v}%`} />
-                  <YAxis type="category" dataKey="skill" tick={AXIS_TICK_SM} width={115} />
-                  <Tooltip content={({ payload, label }) => {
-                    if (!payload?.length) return null;
-                    const d = payload[0]?.payload;
-                    return (
-                      <div className="bg-white border border-gray-200 rounded-lg shadow px-3 py-2 text-xs">
-                        <p className="font-semibold mb-1">{label}</p>
-                        <p style={{ color: '#003366' }}>{t('الطلب', 'Demand')}: {formatCompact(d?.demand)} {t('وظيفة', 'jobs')}</p>
-                        <p style={{ color: '#007DB5' }}>{t('العرض', 'Supply')}: {formatCompact(d?.supply)} {t('مقرر', 'courses')}</p>
-                        <p className="text-gray-400 border-t mt-1 pt-1">{t('تطابق', 'Match')}: {d?.match_pct}%</p>
+        {/* Occupation Table */}
+        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white border-b border-gray-200 z-10">
+              <tr>
+                <th className="text-left py-2 px-3 font-semibold text-gray-500">{t('المهنة', 'Occupation')}</th>
+                <th className="text-left py-2 px-3 font-semibold text-gray-500">ISCO</th>
+                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('العمال', 'Workers')}</th>
+                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('الوظائف', 'Jobs')}</th>
+                <th className="py-2 px-3 font-semibold text-gray-500 w-28">{t('النسبة', 'Ratio')}</th>
+                <th className="text-right py-2 px-3 font-semibold text-gray-500">{t('المهارات', 'Skills')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(occComparison?.occupations || []).map((occ: any) => (
+                <tr key={occ.occupation_id}
+                  onClick={() => setSelectedOccId(selectedOccId === occ.occupation_id ? null : occ.occupation_id)}
+                  className={`border-b border-gray-50 cursor-pointer transition-colors ${
+                    selectedOccId === occ.occupation_id ? 'bg-[#003366]/5' : 'hover:bg-gray-50'
+                  }`}>
+                  <td className="py-2 px-3 font-medium text-gray-800 max-w-[220px] truncate">{occ.occupation}</td>
+                  <td className="py-2 px-3 text-gray-400 text-[10px] font-mono">{occ.isco || '—'}</td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[#007DB5] font-semibold">{formatCompact(occ.supply_workers)}</td>
+                  <td className="py-2 px-3 text-right tabular-nums text-[#003366] font-semibold">{formatCompact(occ.demand_jobs)}</td>
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden flex">
+                        <div className="h-full bg-[#007DB5]" style={{width:`${Math.min(50, occ.supply_workers > 0 ? 50 : 0)}%`}} />
+                        <div className="h-full bg-[#003366]" style={{width:`${Math.min(50, occ.demand_jobs > 0 ? Math.min(50, occ.demand_jobs / Math.max(occ.supply_workers, 1) * 5000) : 0)}%`}} />
                       </div>
-                    );
-                  }} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="demandNorm" name={t('الطلب (نسبي)', 'Demand (relative)')} fill="#003366" radius={[0, 3, 3, 0]} barSize={12} />
-                  <Bar dataKey="supplyNorm" name={t('العرض (نسبي)', 'Supply (relative)')} fill="#007DB5" radius={[0, 3, 3, 0]} barSize={12} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : <div className="h-[300px] flex items-center justify-center text-gray-400 text-sm">Loading...</div>}
-            <p className="text-[9px] text-gray-400 mt-2">{t('المصدر', 'Source')}: ESCO essential skills (35.7K jobs) + CAA/University Catalogs (19.2K courses)</p>
-          </div>
-
-          </DataStory>
-
-          {/* RIGHT: Heatmap — by skill type, color = match percentage */}
-          <DataStory title="Skill Match Heatmap" quality="official+generated"
-            method="Skills grouped by ESCO type (knowledge, skill/competence, technology). Color intensity = match percentage (supply courses / demand jobs × 100). Darker = bigger gap. Each pill shows skill name + match %. Data from overlapping skills analysis."
-            tables={[{name:'vw_skill_gap', label:'Skill Gap (13K)'}, {name:'dim_skill', label:'ESCO Skills (21.5K)'}]}
-            sourceUrl="https://esco.ec.europa.eu/en/classification/skills">
-          <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-gray-900 mb-1">{t('خريطة حرارية للتطابق', 'Skill Match Heatmap')}</h3>
-            <p className="text-[10px] text-gray-400 mb-3">{t('كلما كان اللون أغمق، كلما كانت الفجوة أكبر', 'Darker = larger gap between demand and supply')}</p>
-            <div className="space-y-4">
-              {Object.entries(skillComp?.categories || {}).slice(0, 4).map(([type, skills]: [string, any]) => (
-                <div key={type}>
-                  <h4 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{type}</h4>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(skills || []).slice(0, 12).map((s: any, i: number) => {
-                      const matchPct = s.match_pct ?? 0;
-                      // Color gradient: 0% match = dark navy, 100% match = light teal
-                      const bg = matchPct > 50 ? `rgba(0,125,181,${0.15 + matchPct/200})` : matchPct > 10 ? `rgba(10,92,138,${0.2 + (50-matchPct)/100})` : `rgba(0,51,102,${0.3 + (100-matchPct)/200})`;
-                      const text = matchPct > 30 ? '#003366' : '#ffffff';
-                      return (
-                        <div key={i} className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-all hover:scale-105 cursor-default"
-                          style={{ background: bg, color: text }}
-                          title={`${s.skill}: demand=${formatCompact(s.demand)}, supply=${formatCompact(s.supply)}, match=${matchPct}%`}>
-                          {(s.skill || '').length > 20 ? s.skill.slice(0, 18) + '...' : s.skill}
-                          <span className="ml-1 opacity-70">{matchPct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-400 tabular-nums">{occ.skills}</td>
+                </tr>
               ))}
+              {occLoading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">Loading...</td></tr>}
+              {!occLoading && (occComparison?.occupations || []).length === 0 && (
+                <tr><td colSpan={6} className="py-8 text-center text-gray-400">{t('لا توجد نتائج', 'No results')}</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {(occComparison?.pages ?? 0) > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <span className="text-[10px] text-gray-400">
+              {t('صفحة', 'Page')} {occComparison?.page} / {occComparison?.pages} ({occComparison?.total} {t('مهنة', 'occupations')})
+            </span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setOccPage(1)} disabled={occPage === 1} className="px-2 py-1 text-[10px] rounded hover:bg-gray-100 disabled:opacity-30">⟨⟨</button>
+              <button onClick={() => setOccPage(p => Math.max(1, p - 1))} disabled={occPage === 1} className="px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-30">⟨</button>
+              <input type="number" min={1} max={occComparison?.pages || 1} value={occPage}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= (occComparison?.pages || 1)) { setOccPage(v); setSelectedOccId(null); } }}
+                className="w-14 px-2 py-1 text-xs text-center border border-gray-200 rounded tabular-nums" />
+              <button onClick={() => setOccPage(p => Math.min(occComparison?.pages || 1, p + 1))} disabled={occPage === (occComparison?.pages || 1)} className="px-2 py-1 text-xs rounded hover:bg-gray-100 disabled:opacity-30">⟩</button>
+              <button onClick={() => setOccPage(occComparison?.pages || 1)} disabled={occPage === (occComparison?.pages || 1)} className="px-2 py-1 text-[10px] rounded hover:bg-gray-100 disabled:opacity-30">⟩⟩</button>
             </div>
-            {/* Legend */}
-            <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-100">
-              <span className="text-[9px] text-gray-400">{t('مقياس الفجوة', 'Gap scale')}:</span>
-              <div className="flex gap-1">
-                {[0, 20, 40, 60, 80, 100].map(v => (
-                  <div key={v} className="w-6 h-4 rounded" style={{
-                    background: v > 50 ? `rgba(0,125,181,${0.15 + v/200})` : `rgba(0,51,102,${0.3 + (100-v)/200})`,
-                  }} />
-                ))}
+          </div>
+        )}
+
+        {/* Skill Drill-Down (when occupation clicked) */}
+        {selectedOccId && occSkills && (
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">{occSkills.occupation?.title}</h3>
+                <p className="text-[10px] text-gray-400">ISCO: {occSkills.occupation?.isco} • {occSkills.total_skills} skills ({occSkills.essential_count} essential) • {occSkills.supplied_count} taught in courses</p>
               </div>
-              <span className="text-[9px] text-gray-400">0% → 100% {t('تطابق', 'match')}</span>
+              <button onClick={() => setSelectedOccId(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-[9px] text-gray-400 mt-2">{t('المصدر', 'Source')}: ESCO Taxonomy + LinkedIn + 100 University Catalogs</p>
-          </div>
-          </DataStory>
-        </div>
 
-        {/* ROW 3: Demand-Only Gaps + Supply-Only Surplus */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Demand-only: skills employers NEED but nobody teaches */}
-          <DataStory title="Critical Gaps — Demanded but NOT Taught" quality="official+generated"
-            method="Skills that appear in job postings (via ESCO occupation-skill inheritance) but have ZERO matching courses in any UAE university catalog. These are skills employers need that the education system completely lacks. Demand count = number of LinkedIn jobs whose ESCO occupation requires this skill as essential."
-            tables={[{name:'fact_job_skills', label:'Job Skills (3M)'}, {name:'fact_course_skills', label:'Course Skills (24.8K)'}, {name:'dim_skill', label:'ESCO Skills (21.5K)'}]}
-            caveats="Microsoft Excel/Word/Outlook appear as top gaps because ESCO maps them as skills for many occupations, but university course names don't match these exact labels. This may overstate the gap for software tool skills."
-            sourceUrl="https://esco.ec.europa.eu/en/use-esco/download">
-          <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-gray-900 mb-1">{t('فجوات حرجة — مهارات مطلوبة غير مُدرَّسة', 'Critical Gaps — Demanded but NOT Taught')}</h3>
-            <p className="text-[10px] text-gray-400 mb-3">{t('مهارات يحتاجها أصحاب العمل ولا تُدرَّس في أي جامعة', 'Skills employers need but zero courses teach')}</p>
-            <div className="space-y-1.5">
-              {(skillComp?.demand_only || []).slice(0, 10).map((s: any, i: number) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-700 w-32 truncate">{s.skill}</span>
-                  <div className="flex-1 h-3 bg-gray-50 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#003366] to-[#0A5C8A]"
-                      style={{ width: `${Math.min(100, (s.demand / ((skillComp?.demand_only?.[0]?.demand) || 1)) * 100)}%` }} />
-                  </div>
-                  <span className="text-[10px] font-semibold text-gray-500 w-12 text-right">{formatCompact(s.demand)}</span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-h-[300px] overflow-y-auto">
+              {/* LEFT: Demanded skills */}
+              <div>
+                <h4 className="text-[10px] font-semibold text-[#003366] uppercase mb-2">{t('مهارات مطلوبة', 'Skills Required')} ({occSkills.essential_count} essential)</h4>
+                <div className="space-y-1">
+                  {(occSkills.skills || []).filter((s: any) => s.relation === 'essential').slice(0, 20).map((s: any) => (
+                    <div key={s.skill_id} className="flex items-center justify-between py-1 text-[10px] border-b border-gray-100">
+                      <span className="text-gray-700 truncate max-w-[60%]">{s.skill}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#003366] font-semibold">{formatCompact(s.demand_jobs)} jobs</span>
+                        {s.supply_courses > 0 && <span className="text-[#007DB5]">{s.supply_courses} courses</span>}
+                        {s.supply_courses === 0 && <span className="text-gray-300">no courses</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <p className="text-[9px] text-gray-400 mt-3">{t('المصدر', 'Source')}: ESCO essential skill mappings from LinkedIn jobs</p>
-          </div>
+              </div>
 
-          </DataStory>
-
-          {/* Supply-only: skills taught but market doesn't demand */}
-          <DataStory title="Potential Surplus — Taught but NOT Demanded" quality="official+generated"
-            method="Skills that are taught in UAE university courses (matched via token matching against ESCO) but do NOT appear as essential requirements in any LinkedIn job posting. These represent curriculum areas that may not align with current market needs."
-            tables={[{name:'fact_course_skills', label:'Course Skills (24.8K)'}, {name:'dim_course', label:'Courses (19.2K)'}, {name:'dim_skill', label:'ESCO Skills (21.5K)'}]}
-            caveats="Token matching may produce false positives — 'design window and glazing systems' matching a generic engineering course. Supply-only doesn't mean the skill is useless — it may be demanded under a different name."
-            sourceUrl="https://www.caa.ae/Pages/Programs/All.aspx">
-          <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-gray-900 mb-1">{t('فائض محتمل — مهارات مُدرَّسة غير مطلوبة', 'Potential Surplus — Taught but NOT Demanded')}</h3>
-            <p className="text-[10px] text-gray-400 mb-3">{t('مهارات تُدرَّسها الجامعات ولكن السوق لا يطلبها', 'Skills universities teach but the market doesn\'t ask for')}</p>
-            <div className="space-y-1.5">
-              {(skillComp?.supply_only || []).slice(0, 10).map((s: any, i: number) => (
-                <div key={i} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-700 w-32 truncate" title={s.skill}>{s.skill}</span>
-                  <div className="flex-1 h-3 bg-gray-50 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#C9A84C] to-[#C9A84C]/60"
-                      style={{ width: `${Math.min(100, (s.supply / ((skillComp?.supply_only?.[0]?.supply) || 1)) * 100)}%` }} />
-                  </div>
-                  <span className="text-[10px] font-semibold text-gray-500 w-12 text-right">{formatCompact(s.supply)}</span>
+              {/* RIGHT: Supplied skills (taught in universities) */}
+              <div>
+                <h4 className="text-[10px] font-semibold text-[#007DB5] uppercase mb-2">{t('مهارات متوفرة في الجامعات', 'Skills Taught in Universities')}</h4>
+                <div className="space-y-1">
+                  {(occSkills.skills || []).filter((s: any) => s.supply_courses > 0).slice(0, 20).map((s: any) => (
+                    <div key={s.skill_id} className="flex items-center justify-between py-1 text-[10px] border-b border-gray-100">
+                      <span className="text-gray-700 truncate max-w-[50%]">{s.skill}</span>
+                      <span className="text-[#007DB5] font-semibold">{s.supply_courses} courses</span>
+                    </div>
+                  ))}
+                  {(occSkills.skills || []).filter((s: any) => s.supply_courses > 0).length === 0 && (
+                    <p className="text-[10px] text-gray-400 italic py-2">{t('لا توجد مقررات تُدرّس مهارات هذه المهنة', 'No university courses teach skills for this occupation')}</p>
+                  )}
                 </div>
-              ))}
+              </div>
             </div>
-            <p className="text-[9px] text-gray-400 mt-3">{t('المصدر', 'Source')}: CAA + 100 University Catalog course-to-skill mappings</p>
           </div>
-          </DataStory>
-        </div>
+        )}
 
         <InsightPanel
           explanation={t(
-            'تحليل ذكي يقارن 2,237 مهارة أساسية مطلوبة في سوق العمل مع 1,772 مهارة مُدرَّسة في الجامعات. فقط 300 مهارة متداخلة.',
-            `Smart analysis comparing ${formatCompact(skillComp?.stats?.total_demanded ?? 0)} essential demanded skills with ${formatCompact(skillComp?.stats?.total_supplied ?? 0)} taught skills. Only ${formatCompact(skillComp?.stats?.overlap_count ?? 0)} overlap.`
+            'يقارن هذا الجدول عدد العمال الموظفين في كل مهنة مع عدد الوظائف المنشورة. انقر على أي مهنة لعرض المهارات المطلوبة والمتوفرة.',
+            'This table compares employed workers per occupation with job postings. Click any occupation to see required vs available skills.'
           )}
-          insight={t(
-            'أكبر فجوات: Microsoft Excel, Microsoft Word, Outlook — أدوات أساسية لم تُطابق. أكبر فوائض: مهارات هندسية متخصصة لا يطلبها السوق.',
-            `Biggest gaps: ${(skillComp?.demand_only || []).slice(0, 3).map((s: any) => s.skill).join(', ')} — basic tools not matched. Biggest surplus: ${(skillComp?.supply_only || []).slice(0, 2).map((s: any) => s.skill).join(', ')}.`
-          )}
-          recommendation={t(
-            'أولوية: إضافة مقررات في الأدوات الرقمية (Excel, Office) عبر جميع التخصصات. مراجعة البرامج ذات الفائض.',
-            'Priority: add digital tools courses (Excel, Office, Outlook) across ALL disciplines. Review programs with surplus skills for curriculum rebalancing.'
-          )}
-          severity="warning"
-          source={`ESCO (${formatCompact(skillComp?.stats?.total_demanded ?? 0)} essential skills) + LinkedIn (${formatCompact(skillMatch?.total_jobs_with_skills ?? 0)} jobs) + University Catalogs (${formatCompact(skillMatch?.total_courses_mapped ?? 0)} courses)`}
+          insight={occComparison?.total ? t(
+            `${occComparison.total} مهنة لديها بيانات. الطلب من LinkedIn (2024-2025)، العرض من بيانات التوظيف (2015-2019).`,
+            `${occComparison.total} occupations with data. Demand from LinkedIn (2024-2025), Supply from Bayanat employment census (2015-2019).`
+          ) : undefined}
+          severity="info" compact
         />
       </div>
       </DataStory>

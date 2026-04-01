@@ -313,33 +313,35 @@ async def real_occupation_comparison(
     db: AsyncSession = Depends(get_db),
 ):
     """REAL supply-demand comparison at occupation level.
-    
+
     Supply = employed workers per occupation (Bayanat census).
     Demand = job postings per occupation (LinkedIn).
     """
-    conds = []
     params: dict = {"lim": limit, "offset": (page - 1) * limit}
 
-    if search:
-        conds.append("o.title_en ILIKE :q")
-        params["q"] = f"%{search}%"
-    if region:
-        conds.append("(s.region_code = :reg OR d.region_code = :reg)")
-        params["reg"] = region
+    supply_where = "WHERE region_code = :reg" if region else ""
+    demand_where = "WHERE region_code = :reg" if region else ""
+    occ_conds = []
 
-    where = (" AND " + " AND ".join(conds)) if conds else ""
+    if region:
+        params["reg"] = region
+    if search:
+        occ_conds.append("o.title_en ILIKE :q")
+        params["q"] = f"%{search}%"
+
+    occ_where = (" AND " + " AND ".join(occ_conds)) if occ_conds else ""
 
     rows = (await db.execute(text(f"""
         WITH supply AS (
             SELECT occupation_id, SUM(supply_count) as workers
             FROM fact_supply_talent_agg
-            {'WHERE region_code = :reg' if region else ''}
+            {supply_where}
             GROUP BY occupation_id
         ),
         demand AS (
             SELECT occupation_id, COUNT(*) as jobs
             FROM fact_demand_vacancies_agg
-            {'WHERE region_code = :reg' if region else ''}
+            {demand_where}
             GROUP BY occupation_id
         )
         SELECT o.occupation_id, o.title_en as occupation, o.code_isco,
@@ -351,18 +353,24 @@ async def real_occupation_comparison(
         LEFT JOIN supply s ON o.occupation_id = s.occupation_id
         LEFT JOIN demand d ON o.occupation_id = d.occupation_id
         WHERE (COALESCE(s.workers, 0) > 0 OR COALESCE(d.jobs, 0) > 0)
-        {where}
+        {occ_where}
         ORDER BY demand_jobs DESC
         LIMIT :lim OFFSET :offset
     """), params)).fetchall()
 
+    count_params = {k: v for k, v in params.items() if k not in ('lim', 'offset')}
     total = (await db.execute(text(f"""
-        SELECT count(DISTINCT o.occupation_id)
-        FROM dim_occupation o
-        LEFT JOIN fact_supply_talent_agg s ON o.occupation_id = s.occupation_id
-        LEFT JOIN fact_demand_vacancies_agg d ON o.occupation_id = d.occupation_id
-        WHERE (s.occupation_id IS NOT NULL OR d.occupation_id IS NOT NULL) {where}
-    """), {k:v for k,v in params.items() if k not in ('lim','offset')})).scalar() or 0
+        WITH supply AS (
+            SELECT DISTINCT occupation_id FROM fact_supply_talent_agg {supply_where}
+        ),
+        demand AS (
+            SELECT DISTINCT occupation_id FROM fact_demand_vacancies_agg {demand_where}
+        )
+        SELECT count(*) FROM dim_occupation o
+        WHERE (o.occupation_id IN (SELECT occupation_id FROM supply)
+            OR o.occupation_id IN (SELECT occupation_id FROM demand))
+        {occ_where}
+    """), count_params)).scalar() or 0
 
     return {
         "occupations": [
@@ -377,9 +385,66 @@ async def real_occupation_comparison(
         "page": page,
         "pages": (total + limit - 1) // limit if limit > 0 else 0,
         "explanation": {
-            "supply_workers": "Total employed workers in this occupation (Bayanat/MOHRE census 2015-2019)",
-            "demand_jobs": "Number of LinkedIn job postings for this occupation (2024-2025)",
-            "gap": "demand_jobs - supply_workers (negative = more workers than openings)",
-            "note": "Supply is 2015-2019 census data. Demand is 2024-2025 postings. Different time periods."
+            "supply_workers": "Employed workers in this occupation (Bayanat/MOHRE census 2015-2019)",
+            "demand_jobs": "LinkedIn job postings for this occupation (2024-2025)",
+            "gap": "demand - supply (negative = more workers than job openings)",
+            "note": "Supply is 2015-2019 census. Demand is 2024-2025 postings. Different time periods."
         }
+    }
+
+
+@router.get("/occupation-skills/{occupation_id}")
+async def occupation_skills_detail(
+    occupation_id: int,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Skills for a specific occupation — split into demanded vs supplied."""
+    # Occupation info
+    occ = (await db.execute(text(
+        "SELECT occupation_id, title_en, code_isco FROM dim_occupation WHERE occupation_id = :id"
+    ), {"id": occupation_id})).fetchone()
+    if not occ:
+        return {"error": "Occupation not found"}
+
+    # Demanded skills (from ESCO mapping)
+    demanded = (await db.execute(text("""
+        SELECT s.skill_id, s.label_en, s.skill_type, os.relation_type,
+            (SELECT COUNT(DISTINCT js.demand_id) FROM fact_job_skills js WHERE js.skill_id = s.skill_id AND js.relation_type = 'essential') as job_count
+        FROM fact_occupation_skills os
+        JOIN dim_skill s ON os.skill_id = s.skill_id
+        WHERE os.occupation_id = :oid
+        ORDER BY os.relation_type, s.label_en
+    """), {"oid": occupation_id})).fetchall()
+
+    # Supplied skills (from course mappings for this occupation's skills)
+    supplied_ids = [r[0] for r in demanded]
+    supplied = {}
+    if supplied_ids:
+        placeholders = ','.join(str(sid) for sid in supplied_ids[:200])
+        sup_rows = (await db.execute(text(f"""
+            SELECT cs.skill_id, COUNT(DISTINCT cs.course_id) as courses,
+                STRING_AGG(DISTINCT c.institution_name, ', ') as institutions
+            FROM fact_course_skills cs
+            JOIN dim_course c ON cs.course_id = c.course_id::text
+            WHERE cs.skill_id IN ({placeholders})
+            GROUP BY cs.skill_id
+        """))).fetchall()
+        for r in sup_rows:
+            supplied[r[0]] = {"courses": r[1], "institutions": r[2]}
+
+    return {
+        "occupation": {"id": occ[0], "title": occ[1], "isco": occ[2]},
+        "skills": [
+            {
+                "skill_id": r[0], "skill": r[1], "type": r[2], "relation": r[3],
+                "demand_jobs": int(r[4] or 0),
+                "supply_courses": supplied.get(r[0], {}).get("courses", 0),
+                "supply_institutions": supplied.get(r[0], {}).get("institutions", ""),
+            }
+            for r in demanded
+        ],
+        "total_skills": len(demanded),
+        "essential_count": sum(1 for r in demanded if r[3] == 'essential'),
+        "supplied_count": sum(1 for r in demanded if r[0] in supplied),
     }
