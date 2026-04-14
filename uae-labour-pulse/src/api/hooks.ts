@@ -315,11 +315,28 @@ export function useUniversity(params?: { emirate?: string; institution_id?: numb
 
 export function useSupplyDashboard(params?: {
   emirate?: string; year_from?: number; year_to?: number; sector?: string;
+  specialty?: string; degree_level?: string; institution?: string; program?: string;
 }) {
   return useQuery({
     queryKey: ["supply-dashboard", params],
     queryFn: () => api.get<SupplyDashboardResponse>("/supply-dashboard", params as any),
     staleTime: 60_000,
+  });
+}
+
+export function useSupplyFilterOptions() {
+  return useQuery({
+    queryKey: ["supply-filter-options"],
+    queryFn: () => api.get<{
+      years: number[];
+      specializations: string[];
+      degree_levels: string[];
+      sectors: string[];
+      emirates: { value: string; label: string }[];
+      institutions?: string[];
+      programs?: string[];
+    }>("/supply-dashboard/filter-options"),
+    staleTime: 300_000,
   });
 }
 
@@ -708,7 +725,16 @@ export function useRealSkillComparison(params?: { limit?: number; search?: strin
   });
 }
 
-export function useUnifiedTimeline(params?: { region?: string; occupation?: string; isco_group?: string }) {
+export function useOccupationSearch(q: string) {
+  return useQuery({
+    queryKey: ["occupation-search", q],
+    queryFn: () => api.get<any>("/skill-matching/occupation-search", { q, limit: 10 }),
+    staleTime: 30_000,
+    enabled: q.length >= 2,
+  });
+}
+
+export function useUnifiedTimeline(params?: { region?: string; occupation?: string; isco_group?: string; year?: number }) {
   return useQuery({
     queryKey: ["unified-timeline", params],
     queryFn: () => api.get<any>("/skill-matching/unified-timeline", params as any),
@@ -789,5 +815,95 @@ export function useExploreView(params: {
     queryFn: () => api.get<import("./types").ExploreResponse>("/query/explore", params as any),
     staleTime: 60_000,
     enabled: !!params.view,
+  });
+}
+
+// ── Graph visualization hooks ──────────────────────────
+export function useSkillNetworkGraph(params?: {
+  limit?: number;
+  occ_limit?: number;
+  skills_per_occ?: number;
+  search?: string;
+  isco_group?: string;
+  region?: string;
+  occupation_ids?: string;
+}) {
+  return useQuery({
+    queryKey: ["graph-skill-network", params],
+    queryFn: () => api.get<any>("/graph/skill-network", params as any),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useGraphOccupationSearch(q: string) {
+  return useQuery({
+    queryKey: ["graph-occ-search", q],
+    queryFn: () => api.get<{ id: number; title: string; isco_group: string; demand: number }[]>("/graph/occupation-search", { q } as any),
+    staleTime: 60_000,
+    enabled: q.length >= 2,
+  });
+}
+
+export interface ChatFile {
+  file_id: string;
+  filename: string;
+  type: string;
+  summary: string;
+  size_kb?: number;
+}
+
+export function useUploadChatFile() {
+  return useMutation({
+    mutationFn: async ({ file, sessionId }: { file: File; sessionId: string }) => {
+      const token = localStorage.getItem("auth_token");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("session_id", sessionId);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || "/api"}/chat/upload-file`, {
+        method: "POST",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Upload failed");
+      }
+      return res.json() as Promise<ChatFile>;
+    },
+  });
+}
+
+export function useGraphOccupationList(params?: { q?: string; isco_group?: string; limit?: number } | undefined) {
+  return useQuery({
+    queryKey: ["graph-occ-list", params],
+    queryFn: () => api.get<{ total: number; occupations: { id: number; title: string; isco_group: string; demand: number; skill_count: number }[] }>("/graph/occupations", params as any),
+    staleTime: 5 * 60_000,
+    enabled: !!params,
+  });
+}
+
+export function useOccupationSkillGraph(occupationId: number | null) {
+  return useQuery({
+    queryKey: ["graph-occupation-skills", occupationId],
+    queryFn: () => api.get<any>(`/graph/occupation-skills/${occupationId}`),
+    staleTime: 5 * 60_000,
+    enabled: !!occupationId,
+  });
+}
+
+export function useCareerTransitionGraph(occupationId: number | null) {
+  return useQuery({
+    queryKey: ["graph-career-transitions", occupationId],
+    queryFn: () => api.get<any>(`/graph/career-transitions/${occupationId}`),
+    staleTime: 5 * 60_000,
+    enabled: !!occupationId,
+  });
+}
+
+export function useSupplyChainGraph(params?: { institution_id?: number; region?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["graph-supply-chain", params],
+    queryFn: () => api.get<any>("/graph/supply-chain", params as any),
+    staleTime: 5 * 60_000,
   });
 }

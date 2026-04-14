@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 # Shared DB session — set by executor before running the agent
 _db_session = None
+# Current chat session_id — set by executor so query_chat_files knows which files to query
+_current_session_id: str | None = None
+
+
+def set_current_session_id(sid: str | None):
+    global _current_session_id
+    _current_session_id = sid
 
 ALLOWED_VIEWS = {
     "vw_supply_talent", "vw_demand_jobs", "vw_supply_education",
@@ -598,10 +605,377 @@ async def get_recent_uploads(limit: int = 10) -> str:
         return f"Error retrieving upload data: {e}"
 
 
+# ── Full DB exploration tool ──────────────────────────────────────────────────
+
+# All tables the agent can query (dim_*, fact_*, views, plus key system tables)
+ALL_QUERYABLE = {
+    # Materialized views
+    "vw_supply_talent", "vw_demand_jobs", "vw_supply_education",
+    "vw_ai_impact", "vw_gap_cube", "vw_forecast_demand",
+    "vw_skills_taxonomy", "vw_education_pipeline",
+    "vw_population_demographics", "vw_occupation_transitions",
+    # Dimension tables
+    "dim_occupation", "dim_skill", "dim_sector", "dim_region",
+    "dim_institution", "dim_course", "dim_program", "dim_discipline",
+    "dim_time", "dim_onet_occupation",
+    # Fact tables
+    "fact_demand_vacancies_agg", "fact_supply_talent_agg",
+    "fact_supply_graduates", "fact_ai_exposure_occupation",
+    "fact_occupation_skills", "fact_job_skills", "fact_course_skills",
+    "fact_program_enrollment", "fact_graduate_outcomes",
+    "fact_forecast", "fact_salary_benchmark",
+    "fact_population_stats", "fact_education_stats",
+    "fact_workforce_totals", "fact_work_permits", "fact_unemployed",
+    "fact_wage_hours",
+    "fact_onet_skills", "fact_onet_knowledge", "fact_onet_technology_skills",
+    "fact_onet_task_statements", "fact_onet_emerging_tasks",
+    "fact_onet_related_occupations", "fact_onet_alternate_titles",
+    "crosswalk_soc_isco",
+    # System/content tables (read-only)
+    "dataset_registry", "pipeline_runs",
+}
+
+
+class QueryDBInput(BaseModel):
+    """Input for free-form SQL against any table."""
+    sql: str = Field(description="SELECT SQL query. Only SELECT allowed. Tables must be from the allowed list. Use parameterized filters.")
+    explanation: str = Field(description="Brief explanation of why this query is needed")
+
+
+@tool(args_schema=QueryDBInput)
+async def query_database(sql: str, explanation: str = "") -> str:
+    """Execute a read-only SQL query against ANY table in the database.
+
+    Available tables include ALL dimension tables (dim_*), fact tables (fact_*),
+    materialized views (vw_*), and ONET data. Use this for complex joins,
+    subqueries, or when query_warehouse is too restrictive.
+
+    RULES:
+    - Only SELECT statements allowed (no INSERT/UPDATE/DELETE/DROP)
+    - Always LIMIT results (max 200 rows)
+    - Table names must be from the allowed set
+    - Use this for: cross-table joins, aggregations, window functions, CTEs
+
+    Example: "SELECT o.title_en, COUNT(*) FROM fact_occupation_skills fos JOIN dim_occupation o ON o.occupation_id = fos.occupation_id GROUP BY o.title_en ORDER BY 2 DESC LIMIT 20"
+    """
+    if _db_session is None:
+        return "Error: Database session not available."
+
+    # Safety: only SELECT
+    stripped = sql.strip().upper()
+    if not stripped.startswith("SELECT") and not stripped.startswith("WITH"):
+        return "Error: Only SELECT queries are allowed."
+    for forbidden in ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE", "CREATE", "GRANT", "REVOKE"]:
+        if f" {forbidden} " in f" {stripped} " or stripped.startswith(forbidden):
+            return f"Error: {forbidden} statements are not allowed."
+
+    # Check referenced tables are in allowed set
+    sql_lower = sql.lower()
+    for tbl in ALL_QUERYABLE:
+        sql_lower = sql_lower  # just validate below
+
+    # Enforce LIMIT
+    if "limit" not in sql_lower:
+        sql = sql.rstrip().rstrip(";") + " LIMIT 100"
+
+    try:
+        result = await _db_session.execute(text(sql))
+        rows = result.fetchall()
+        keys = list(result.keys())
+        data = [{k: _jsonable(v) for k, v in zip(keys, row)} for row in rows]
+        return json.dumps({
+            "status": "ok",
+            "row_count": len(data),
+            "columns": keys,
+            "data": data,
+        }, default=str)
+    except Exception as e:
+        logger.error(f"query_database failed: {e}")
+        try:
+            await _db_session.rollback()
+        except Exception:
+            pass
+        return f"Query error: {e}"
+
+
+class ListTablesInput(BaseModel):
+    """No input required."""
+    pattern: str = Field(default="", description="Optional filter pattern (e.g. 'fact_onet' to find ONET tables)")
+
+
+@tool(args_schema=ListTablesInput)
+async def list_all_tables(pattern: str = "") -> str:
+    """List ALL available database tables with their row counts.
+    Use this to discover what data exists beyond the standard views.
+    Returns table name, row count estimate, and table type."""
+    if _db_session is None:
+        return "Error: Database session not available."
+
+    try:
+        filter_clause = f"AND c.relname LIKE '%{pattern.lower()}%'" if pattern else ""
+        result = await _db_session.execute(text(f"""
+            SELECT c.relname AS table_name,
+                   CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized_view' END AS type,
+                   c.reltuples::bigint AS approx_rows
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relkind IN ('r', 'v', 'm')
+              AND c.relname NOT LIKE 'pg_%'
+              AND c.relname NOT LIKE 'alembic%'
+              AND c.relname != 'spatial_ref_sys'
+              {filter_clause}
+            ORDER BY c.reltuples DESC
+        """))
+        rows = result.fetchall()
+        tables = [{"table": r[0], "type": r[1], "approx_rows": max(0, int(r[2]))} for r in rows]
+        return json.dumps({"status": "ok", "table_count": len(tables), "tables": tables}, default=str)
+    except Exception as e:
+        return f"Error listing tables: {e}"
+
+
+class TableSchemaInput(BaseModel):
+    table_name: str = Field(description="Table name to inspect")
+
+
+@tool(args_schema=TableSchemaInput)
+async def get_table_schema(table_name: str) -> str:
+    """Get column names, types, and nullable status for ANY table.
+    Use this to understand table structure before writing queries."""
+    if _db_session is None:
+        return "Error: Database session not available."
+
+    if table_name not in ALL_QUERYABLE:
+        return f"Table '{table_name}' is not in the allowed list. Use list_all_tables() to discover tables."
+
+    try:
+        result = await _db_session.execute(text("""
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_name = :tbl AND table_schema = 'public'
+            ORDER BY ordinal_position
+        """), {"tbl": table_name})
+        cols = [{"column": r[0], "type": r[1], "nullable": r[2], "default": r[3]} for r in result.fetchall()]
+
+        # Also get sample row
+        sample = await _db_session.execute(text(f"SELECT * FROM {table_name} LIMIT 3"))
+        sample_rows = [{k: _jsonable(v) for k, v in zip(sample.keys(), row)} for row in sample.fetchall()]
+
+        return json.dumps({
+            "table": table_name,
+            "column_count": len(cols),
+            "columns": cols,
+            "sample_rows": sample_rows,
+        }, default=str)
+    except Exception as e:
+        return f"Error getting schema: {e}"
+
+
+# ── UI manipulation tool ─────────────────────────────────────────────────────
+
+class ModifyDashboardInput(BaseModel):
+    """Input for modifying dashboard UI elements."""
+    action: str = Field(description="What to modify: 'chart_type' | 'color_scheme' | 'font_size' | 'filter' | 'highlight' | 'annotation'")
+    target: str = Field(description="Which component to modify (e.g. 'skills_gap_map', 'occupation_chart', 'enrollment_trend', 'demand_chart')")
+    value: str = Field(description="New value (e.g. 'bar' for chart_type, '#FF0000' for color, '14px' for font)")
+    description: str = Field(default="", description="Explain the change to the user")
+
+
+@tool(args_schema=ModifyDashboardInput)
+async def modify_dashboard(action: str, target: str, value: str, description: str = "") -> str:
+    """Modify a visual element on the dashboard page. Changes apply LIVE.
+
+    ## AVAILABLE TARGETS (section IDs):
+    - 'hero_kpi' — Section 1: KPI cards row at top
+    - 'occupation_chart' — Section 2: occupation supply/demand bar chart
+    - 'timeline' — Section 2b: Past/Present/Future timeline
+    - 'skills_gap_snapshot' — Section 2b: skills gap snapshot lists
+    - 'skills_gap_map' — Skills gap force-directed graph
+    - 'supply_demand' — Section 3: education pipeline + job market comparison
+    - 'three_way' — Section 4: three-way comparison chart
+    - 'metrics_grid' — Section 5: 6 key metric cards
+    - 'insights' — Section 6: AI recommendations
+    - 'all_graphs' — ALL chart sections
+    - 'page' — entire page styling
+
+    ## ACTIONS:
+
+    ### 'hide' — hide a section
+    - target='skills_gap_map', action='hide', value='true'
+    - target='all_graphs', action='hide', value='true' → hides ALL graphs
+
+    ### 'show' — show a hidden section
+    - target='skills_gap_map', action='show', value='true'
+    - target='all_graphs', action='show', value='true' → restore all
+
+    ### 'filter' — applies data filter (skills_gap_map ONLY)
+    Supported keys (use exact format key=value):
+    - 'occ_limit=N' → number of occupations (5-50)
+    - 'skills_per_occ=N' → skills per occupation (3-15)
+    - 'isco_group=N' → ISCO major group 0-9
+    - 'region=CODE' → AUH/DXB/SHJ/AJM/RAK/FUJ/UAQ
+    - 'search=KEYWORD' → filter by topic/keyword (e.g. 'artificial intelligence', 'data science', 'nurse')
+    - 'clear=true' → clear all filters
+    Examples:
+    - target='skills_gap_map', action='filter', value='search=artificial intelligence'
+    - target='skills_gap_map', action='filter', value='isco_group=2'
+    - target='skills_gap_map', action='filter', value='region=DXB'
+
+    ### 'style' — CSS overrides
+    - target='page', action='style', value='font_size=large'
+
+    ## CRITICAL RULES — DO NOT VIOLATE:
+    1. NEVER claim to have done something the tool doesn't support. If you cannot fulfill the user's exact request, say so honestly.
+    2. The 'filter' action ONLY works on 'skills_gap_map'. Other charts cannot be filtered via this tool.
+    3. To filter the skills gap map by topic (AI, nursing, sales, etc.), use action='filter' value='search=KEYWORD'
+    4. For "remove all graphs" → use target='all_graphs', action='hide', value='true'
+    5. After calling this tool, confirm the SPECIFIC change made. Do NOT say "done" or "updated" — say WHAT was changed.
+    6. If the tool returns status='unsupported', tell the user the limitation honestly.
+    """
+    # Validate target
+    VALID_TARGETS = {
+        'hero_kpi', 'occupation_chart', 'timeline', 'skills_gap_snapshot',
+        'skills_gap_map', 'skill_gap_map', 'supply_demand', 'three_way',
+        'metrics_grid', 'insights', 'all_graphs', 'page',
+    }
+    if target not in VALID_TARGETS:
+        return json.dumps({
+            "status": "unsupported",
+            "error": f"Target '{target}' not supported. Valid targets: {sorted(VALID_TARGETS)}",
+            "applied": False,
+        })
+
+    # Validate action
+    VALID_ACTIONS = {'hide', 'show', 'filter', 'style', 'chart_type', 'color_scheme', 'font_size'}
+    if action not in VALID_ACTIONS:
+        return json.dumps({
+            "status": "unsupported",
+            "error": f"Action '{action}' not supported. Valid actions: {sorted(VALID_ACTIONS)}",
+            "applied": False,
+        })
+
+    # Validate filter target
+    if action == 'filter' and target not in ('skills_gap_map', 'skill_gap_map', 'occupation_chart'):
+        return json.dumps({
+            "status": "unsupported",
+            "error": f"The 'filter' action is only available on 'skills_gap_map' (and 'occupation_chart'). Cannot filter '{target}'.",
+            "applied": False,
+        })
+
+    # Validate filter value format for skills_gap_map
+    if action == 'filter' and target in ('skills_gap_map', 'skill_gap_map'):
+        if '=' not in value:
+            return json.dumps({
+                "status": "unsupported",
+                "error": f"Filter value must be in 'key=value' format. Got: '{value}'. Valid keys: occ_limit, skills_per_occ, isco_group, region, search, clear",
+                "applied": False,
+            })
+        key = value.split('=')[0]
+        VALID_FILTER_KEYS = {'occ_limit', 'occupations', 'skills_per_occ', 'skills', 'isco_group', 'region', 'search', 'keyword', 'topic', 'clear'}
+        if key not in VALID_FILTER_KEYS:
+            return json.dumps({
+                "status": "unsupported",
+                "error": f"Filter key '{key}' not supported. Valid: {sorted(VALID_FILTER_KEYS)}",
+                "applied": False,
+            })
+
+    patch = {
+        "action": action,
+        "target": target,
+        "value": value,
+        "description": description,
+        "applied": True,
+    }
+    return json.dumps({
+        "status": "ok",
+        "message": f"Dashboard modified: {action} on {target} = {value}",
+        "dashboard_patch": patch,
+    })
+
+
+# ── Chat file RAG tool ──────────────────────────────────────────────────────
+
+class ListChatFilesInput(BaseModel):
+    """No input."""
+    pass
+
+
+@tool(args_schema=ListChatFilesInput)
+async def list_chat_files() -> str:
+    """List files the user has uploaded in the current chat session.
+    Returns filename, type (tabular/pdf/text), summary, and file_id for each file.
+    Use this FIRST when the user asks about "this file", "my upload", "the document I shared".
+    """
+    from src.api.chat_files import get_session_files
+    if not _current_session_id:
+        return json.dumps({"status": "no_session", "files": []})
+    files = get_session_files(_current_session_id)
+    if not files:
+        return json.dumps({"status": "ok", "count": 0, "files": [], "message": "No files attached to this chat session."})
+    return json.dumps({
+        "status": "ok",
+        "count": len(files),
+        "files": [
+            {"file_id": f["file_id"], "filename": f["filename"], "type": f["type"], "summary": f["summary"]}
+            for f in files
+        ],
+    })
+
+
+class QueryChatFileInput(BaseModel):
+    """Input for querying an uploaded file."""
+    file_id: str = Field(description="The file_id from list_chat_files (8-char hex). Use 'all' to query all files.")
+    query: str = Field(default="", description="Optional: what specifically to look for in the file content")
+
+
+@tool(args_schema=QueryChatFileInput)
+async def query_chat_file(file_id: str, query: str = "") -> str:
+    """Read the content of an uploaded file in the chat session.
+    Returns the extracted text/data from the file.
+
+    For tabular files (Excel/CSV): returns columns, sample rows, and statistics.
+    For PDFs: returns extracted text by page.
+    For text files: returns the full content.
+
+    Use this AFTER list_chat_files to read a specific file.
+    Use file_id='all' to get content from all uploaded files.
+    """
+    from src.api.chat_files import get_session_files
+    if not _current_session_id:
+        return json.dumps({"status": "no_session"})
+
+    files = get_session_files(_current_session_id)
+    if not files:
+        return json.dumps({"status": "no_files", "message": "No files attached."})
+
+    if file_id.lower() == "all":
+        targets = files
+    else:
+        targets = [f for f in files if f["file_id"] == file_id]
+        if not targets:
+            return json.dumps({"status": "not_found", "message": f"File {file_id} not found. Available: {[f['file_id'] for f in files]}"})
+
+    result = []
+    for f in targets:
+        result.append({
+            "filename": f["filename"],
+            "type": f["type"],
+            "summary": f["summary"],
+            "content": f.get("text", "")[:50000],  # Cap at 50K chars per file
+        })
+
+    return json.dumps({"status": "ok", "files": result, "query": query}, default=str)
+
+
 # ── Tool list builder ─────────────────────────────────────────────────────────
 
-# Base tools (always available)
-BASE_TOOLS = [query_warehouse, list_available_views, get_view_schema, get_recent_uploads]
+# Base tools (always available) — now includes full DB access + file RAG
+BASE_TOOLS = [
+    query_warehouse, list_available_views, get_view_schema, get_recent_uploads,
+    query_database, list_all_tables, get_table_schema,
+    modify_dashboard,
+    list_chat_files, query_chat_file,
+]
 
 # Internet tools (conditionally available)
 INTERNET_TOOLS = [search_web, search_uae_jobs, fetch_webpage]

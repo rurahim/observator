@@ -8,6 +8,8 @@ from src.api.ai_impact import router as ai_impact_router
 from src.api.auth import router as auth_router
 from src.api.chat import router as chat_router
 from src.api.chat_stream import router as chat_stream_router
+from src.api.chat_files import router as chat_files_router
+from src.api.external_research import router as external_research_router
 from src.api.dashboard import router as dashboard_router
 from src.api.data_status import router as data_status_router
 from src.api.evidence import router as evidence_router
@@ -33,6 +35,7 @@ from src.api.supply_dashboard import router as supply_dashboard_router
 from src.api.knowledge_base import router as knowledge_base_router
 from src.api.skill_matching import router as skill_matching_router
 from src.api.explorer import router as explorer_router
+from src.api.graph import router as graph_router
 from src.config import settings
 from src.dependencies import get_engine, get_minio, get_qdrant, get_redis
 
@@ -150,6 +153,8 @@ def create_app() -> FastAPI:
     app.include_router(forecast_router)
     app.include_router(chat_router)
     app.include_router(chat_stream_router)
+    app.include_router(chat_files_router)
+    app.include_router(external_research_router)
     app.include_router(admin_router)
     app.include_router(university_router)
     app.include_router(skills_taxonomy_router)
@@ -169,5 +174,6 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_base_router)
     app.include_router(skill_matching_router)
     app.include_router(explorer_router)
+    app.include_router(graph_router)
 
     return app

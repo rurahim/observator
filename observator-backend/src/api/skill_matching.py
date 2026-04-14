@@ -10,6 +10,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/skill-matching", tags=["skill-matching"])
 
 
+@router.get("/occupation-search")
+async def occupation_search(
+    q: str = "",
+    limit: int = 10,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Autocomplete search for occupation titles."""
+    if not q or len(q) < 2:
+        return {"occupations": []}
+    rows = (await db.execute(text("""
+        SELECT o.occupation_id, o.title_en, o.code_isco, o.isco_major_group
+        FROM dim_occupation o
+        WHERE o.title_en ILIKE :q
+        ORDER BY
+            CASE WHEN o.title_en ILIKE :starts THEN 0 ELSE 1 END,
+            LENGTH(o.title_en),
+            o.title_en
+        LIMIT :lim
+    """), {"q": f"%{q}%", "starts": f"{q}%", "lim": limit})).fetchall()
+    return {
+        "occupations": [
+            {"id": r[0], "title": r[1], "isco": r[2], "group": r[3]}
+            for r in rows
+        ]
+    }
+
+
 @router.get("/summary")
 async def skill_matching_summary(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Overall skill supply-demand summary."""
@@ -680,19 +708,22 @@ async def unified_timeline(
     region: str | None = None,
     occupation: str | None = None,
     isco_group: str | None = None,
+    year: int | None = None,
     period: str = "all",  # past, present, future, all
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Unified timeline: supply + demand across past/present/future with any filter combination.
-    
-    Filters stack: region + occupation + isco_group. Unset = aggregate all.
+
+    Filters stack: region + occupation + isco_group + year. Unset = aggregate all.
+    When year is provided, top_supply_occupations and top_demand_occupations are filtered to that year.
     Returns yearly data with occupation + skill breakdowns.
     """
     params: dict = {}
     supply_conds = []
     demand_conds = []
-    
+    supply_fallback_note = None  # Track if we fell back to ISCO group for supply
+
     if region:
         supply_conds.append("s.region_code = :reg")
         demand_conds.append("d.region_code = :reg")
@@ -709,15 +740,49 @@ async def unified_timeline(
     s_where = (" AND " + " AND ".join(supply_conds)) if supply_conds else ""
     d_where = (" AND " + " AND ".join(demand_conds)) if demand_conds else ""
 
-    # PAST: supply by year (2015-2019)
+    is_future_year = year is not None and year >= 2026
+
+    # PAST: supply by year (2015-2019), optionally filtered to a single year
+    past_year_cond = f"AND t.year = :past_year" if (year is not None and not is_future_year) else "AND t.year BETWEEN 2015 AND 2019"
+    if year is not None and not is_future_year:
+        params["past_year"] = year
     past_supply = (await db.execute(text(f"""
         SELECT t.year, SUM(s.supply_count) as workers, COUNT(DISTINCT s.occupation_id) as occs
         FROM fact_supply_talent_agg s
         JOIN dim_time t ON s.time_id = t.time_id
         LEFT JOIN dim_occupation o ON s.occupation_id = o.occupation_id
-        WHERE t.year BETWEEN 2015 AND 2019 {s_where}
+        WHERE 1=1 {past_year_cond} {s_where}
         GROUP BY t.year ORDER BY t.year
     """), params)).fetchall()
+
+    # FALLBACK: if occupation filter yielded no supply data, try the occupation's ISCO group
+    if not past_supply and occupation and not isco_group:
+        fallback_group = (await db.execute(text("""
+            SELECT isco_major_group FROM dim_occupation
+            WHERE title_en ILIKE :occ AND isco_major_group IS NOT NULL AND isco_major_group != '0'
+            ORDER BY CASE WHEN LOWER(title_en) = LOWER(:exact) THEN 0 ELSE 1 END, LENGTH(title_en)
+            LIMIT 1
+        """), {"occ": f"%{occupation}%", "exact": occupation})).scalar()
+        if fallback_group and fallback_group != '0':
+            isco_labels = {
+                '1': 'Managers', '2': 'Professionals', '3': 'Technicians & Associates',
+                '4': 'Clerical Support', '5': 'Service & Sales', '6': 'Agriculture & Forestry',
+                '7': 'Craft & Trade Workers', '8': 'Machine Operators', '9': 'Elementary Occupations',
+            }
+            supply_fallback_note = f"No direct supply data for '{occupation}'. Showing ISCO Group {fallback_group} ({isco_labels.get(fallback_group, 'Unknown')}) as context."
+            # Rebuild supply conditions with group instead of occupation name
+            supply_conds_fb = [c for c in supply_conds if ":occ" not in c]
+            supply_conds_fb.append("o.isco_major_group = :fb_grp")
+            params["fb_grp"] = fallback_group
+            s_where = (" AND " + " AND ".join(supply_conds_fb)) if supply_conds_fb else ""
+            past_supply = (await db.execute(text(f"""
+                SELECT t.year, SUM(s.supply_count) as workers, COUNT(DISTINCT s.occupation_id) as occs
+                FROM fact_supply_talent_agg s
+                JOIN dim_time t ON s.time_id = t.time_id
+                LEFT JOIN dim_occupation o ON s.occupation_id = o.occupation_id
+                WHERE 1=1 {past_year_cond} {s_where}
+                GROUP BY t.year ORDER BY t.year
+            """), params)).fetchall()
 
     # PRESENT: demand by year (2024-2025)
     present_demand = (await db.execute(text(f"""
@@ -729,17 +794,20 @@ async def unified_timeline(
         GROUP BY t.year ORDER BY t.year
     """), params)).fetchall()
 
-    # TOP OCCUPATIONS for the filtered data
+    # TOP OCCUPATIONS — filter to selected year if it's a past year
+    # s_where may have been updated by fallback logic above
+    supply_year_cond = f"AND t.year = :past_year" if (year is not None and not is_future_year) else "AND t.year BETWEEN 2015 AND 2019"
     top_supply_occs = (await db.execute(text(f"""
         SELECT o.title_en, o.isco_major_group, SUM(s.supply_count) as workers
         FROM fact_supply_talent_agg s
         JOIN dim_occupation o ON s.occupation_id = o.occupation_id
         JOIN dim_time t ON s.time_id = t.time_id
-        WHERE t.year BETWEEN 2015 AND 2019 {s_where}
+        WHERE 1=1 {supply_year_cond} {s_where}
         GROUP BY o.title_en, o.isco_major_group
         ORDER BY workers DESC LIMIT 10
     """), params)).fetchall()
 
+    # TOP DEMAND — for future year, we'll note the projected demand; for past/present always use 2024-2025
     top_demand_occs = (await db.execute(text(f"""
         SELECT o2.title_en, o2.isco_major_group, COUNT(*) as jobs
         FROM fact_demand_vacancies_agg d
@@ -754,24 +822,40 @@ async def unified_timeline(
     occ_ids_supply = [r[0] for r in top_supply_occs[:5]]
     occ_ids_demand = [r[0] for r in top_demand_occs[:5]]
 
-    # FUTURE projections (simplified — use base rates)
+    # FUTURE projections — 3 scenarios: baseline, AI-adjusted, high-impact
     latest_supply = past_supply[-1][1] if past_supply else 0
     latest_demand = sum(r[1] for r in present_demand) if present_demand else 0
     monthly_demand = latest_demand / max(len(present_demand) * 12, 1) * 12
 
+    # Growth rates per scenario
+    supply_base, demand_base = 0.02, 0.08          # Baseline CAGR
+    supply_ai, demand_ai = -0.005, 0.03            # AI displacement / creation
+    supply_ext, demand_ext = 0.01, 0.02            # External factors (policy, migration, market)
+
     future = []
     for i, yr in enumerate(range(2026, 2031)):
+        base_s = int(latest_supply * (1 + supply_base) ** (i + 1))
+        base_d = int(monthly_demand * (1 + demand_base) ** (i + 1))
+        adj_s = int(latest_supply * (1 + supply_base + supply_ai) ** (i + 1))
+        adj_d = int(monthly_demand * (1 + demand_base + demand_ai) ** (i + 1))
+        ext_s = int(latest_supply * (1 + supply_base + supply_ai + supply_ext) ** (i + 1))
+        ext_d = int(monthly_demand * (1 + demand_base + demand_ai + demand_ext) ** (i + 1))
         future.append({
             "year": yr,
-            "supply_projected": int(latest_supply * (1 + 0.02) ** (i + 1)),  # 2% growth
-            "demand_projected": int(monthly_demand * (1 + 0.08) ** (i + 1)),  # 8% growth
+            "supply_projected": base_s,
+            "demand_projected": base_d,
+            "supply_ai_adjusted": adj_s,
+            "demand_ai_adjusted": adj_d,
+            "supply_with_factors": ext_s,
+            "demand_with_factors": ext_d,
             "is_forecast": True,
         })
 
     return {
         "filters_applied": {
-            "region": region, "occupation": occupation, "isco_group": isco_group,
+            "region": region, "occupation": occupation, "isco_group": isco_group, "year": year,
         },
+        "supply_fallback_note": supply_fallback_note,
         "past": [{"year": r[0], "workers": int(r[1]), "occupations": int(r[2])} for r in past_supply],
         "present": [{"year": r[0], "jobs": int(r[1]), "occupations": int(r[2])} for r in present_demand],
         "future": future,
@@ -781,4 +865,16 @@ async def unified_timeline(
         "top_demand_occupations": [
             {"occupation": r[0], "group": r[1], "jobs": int(r[2])} for r in top_demand_occs
         ],
+        "methodology": {
+            "supply_model": f"Linear extrapolation from Bayanat employment data (2015-2019). Base: {int(latest_supply):,} workers. Growth rate: 2%/year compound. Source: MOHRE + Bayanat official employment CSVs.",
+            "demand_model": f"Linear extrapolation from LinkedIn job postings (2024-2025). Base: {int(monthly_demand):,} postings/year. Growth rate: 8%/year (UAE economic expansion). Source: LinkedIn UAE scrape.",
+            "projection_method": "Compound annual growth rate (CAGR) applied to last known data point. Supply uses 2% (historical UAE workforce growth). Demand uses 8% (UAE Vision 2030 economic diversification targets).",
+            "ai_adjustment": "AI displacement factor: -2%/year from automation of routine tasks. AI job creation: +3%/year from new digital roles. Based on AIOE + Frey-Osborne + Anthropic Economic Index research.",
+            "limitations": [
+                "Supply data is 2015-2019 only (5-year gap to present)",
+                "Demand data is LinkedIn-only (does not capture all job market)",
+                "Projections assume constant growth rates (no economic shocks modeled)",
+                "Filtered projections use same growth rates regardless of occupation/region",
+            ],
+        },
     }

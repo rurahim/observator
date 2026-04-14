@@ -39,7 +39,14 @@ async def chat_stream(
         )
         session = result.scalar_one_or_none()
         if not session:
-            raise HTTPException(status_code=404, detail="Chat session not found")
+            # Create on-the-fly with the provided UUID (for frontend-generated session IDs)
+            session = ChatSession(
+                session_id=body.session_id,
+                user_id=user.user_id,
+                title=body.message[:100],
+            )
+            db.add(session)
+            await db.flush()
     else:
         session = ChatSession(
             session_id=uuid4(),
@@ -73,7 +80,7 @@ async def chat_stream(
         from src.agent.executor import get_checkpointer
         from src.agent.graph import compile_agent
         from src.agent.state import AgentState
-        from src.agent.tools import set_db_session
+        from src.agent.tools import set_db_session, set_current_session_id
         from src.agent.tracing import create_callback_handler, flush_langfuse
         from src.evidence.linker import get_citations_for_trace
 
@@ -85,6 +92,7 @@ async def chat_stream(
         try:
             async with factory() as agent_db:
                 set_db_session(agent_db)
+                set_current_session_id(str(session_id) if session_id else None)
 
                 try:
                     # Get checkpointer for session memory persistence
@@ -148,12 +156,33 @@ async def chat_stream(
                             if isinstance(chunk, AIMessageChunk) and chunk.content:
                                 full_response += chunk.content
                                 yield _sse_event("token", {"content": chunk.content})
-                            elif isinstance(chunk, AIMessageChunk) and chunk.tool_calls:
-                                for tc in chunk.tool_calls:
-                                    yield _sse_event("tool_call", {
-                                        "name": tc.get("name", ""),
-                                        "args": tc.get("args", {}),
-                                    })
+                            elif isinstance(chunk, AIMessageChunk):
+                                # Capture tool call chunks (args stream in incrementally)
+                                # tool_call_chunks have 'index', 'name', 'args' (str), 'id'
+                                if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
+                                    for tcc in chunk.tool_call_chunks:
+                                        yield _sse_event("tool_call_delta", {
+                                            "index": tcc.get("index", 0),
+                                            "id": tcc.get("id", ""),
+                                            "name": tcc.get("name", ""),
+                                            "args_delta": tcc.get("args", ""),  # JSON string fragment
+                                        })
+                                # Also emit final tool_calls when complete
+                                elif chunk.tool_calls:
+                                    for tc in chunk.tool_calls:
+                                        yield _sse_event("tool_call", {
+                                            "name": tc.get("name", ""),
+                                            "args": tc.get("args", {}),
+                                            "id": tc.get("id", ""),
+                                        })
+                            # Detect ToolMessage results from modify_dashboard
+                            elif hasattr(chunk, 'name') and chunk.name == 'modify_dashboard':
+                                try:
+                                    parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else {}
+                                    if 'dashboard_patch' in parsed:
+                                        yield _sse_event("dashboard_patch", parsed["dashboard_patch"])
+                                except Exception:
+                                    pass
 
                     except Exception as e:
                         logger.error(f"Stream error: {e}", exc_info=True)
@@ -177,6 +206,7 @@ async def chat_stream(
 
                 finally:
                     set_db_session(None)
+                    set_current_session_id(None)
 
         except Exception as e:
             logger.error(f"Stream generator crashed: {e}", exc_info=True)

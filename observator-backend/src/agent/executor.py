@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agent.graph import compile_agent
 from src.agent.state import AgentState
-from src.agent.tools import set_db_session
+from src.agent.tools import set_db_session, set_current_session_id
 from src.agent.tracing import create_callback_handler, flush_langfuse
 from src.config import settings
 
@@ -31,9 +31,47 @@ _checkpointer_cm = None  # Keep context manager alive
 _CHECKPOINT_DB = str(Path(__file__).resolve().parents[2] / "checkpoints.db")
 
 
-async def get_checkpointer() -> AsyncSqliteSaver:
-    """Get or create the singleton AsyncSqliteSaver checkpointer."""
+def _checkpointer_is_broken() -> bool:
+    """Return True if the singleton checkpointer's SQLite connection is closed."""
+    if _checkpointer is None:
+        return False
+    try:
+        conn = getattr(_checkpointer, "conn", None)
+        if conn is None:
+            return False
+        # aiosqlite exposes the underlying sqlite3 connection as ._connection
+        raw = getattr(conn, "_connection", None)
+        if raw is not None:
+            # Attempting a no-op detects a closed connection
+            raw.execute("SELECT 1")
+        return False
+    except Exception:
+        return True
+
+
+async def _reset_checkpointer() -> None:
+    """Tear down the broken singleton so a fresh one can be created."""
     global _checkpointer, _checkpointer_cm
+    if _checkpointer_cm is not None:
+        try:
+            await _checkpointer_cm.__aexit__(None, None, None)
+        except Exception:
+            pass
+    _checkpointer_cm = None
+    _checkpointer = None
+
+
+async def get_checkpointer() -> AsyncSqliteSaver:
+    """Get or create the singleton AsyncSqliteSaver checkpointer.
+
+    If the existing singleton's underlying SQLite connection is closed (which
+    can happen when two concurrent requests race and one completes first),
+    the broken instance is discarded and a fresh one is opened.
+    """
+    global _checkpointer, _checkpointer_cm
+    if _checkpointer is not None and _checkpointer_is_broken():
+        logger.warning("AsyncSqliteSaver connection is closed — resetting checkpointer")
+        await _reset_checkpointer()
     if _checkpointer is None:
         _checkpointer_cm = AsyncSqliteSaver.from_conn_string(_CHECKPOINT_DB)
         _checkpointer = await _checkpointer_cm.__aenter__()
@@ -64,6 +102,7 @@ async def run_agent(
     internet_enabled: bool = False,
     checkpointer=None,
     upload_context: dict | None = None,
+    stateless: bool = False,
 ) -> dict:
     """Run the agent on a user message and return the response.
 
@@ -75,11 +114,17 @@ async def run_agent(
             "data": list[dict] | None,
         }
     """
-    # Give the tools access to the DB session
+    # Give the tools access to the DB session and current chat session
     set_db_session(db)
+    set_current_session_id(str(session_id) if session_id else None)
 
-    # Use the singleton checkpointer if none provided
-    if checkpointer is None:
+    # Use the singleton checkpointer if none provided.
+    # Stateless mode skips the checkpointer entirely — used for auto-generated
+    # analysis calls that don't need session memory and would otherwise cause
+    # SQLite concurrency crashes when fired in parallel.
+    if stateless:
+        checkpointer = None
+    elif checkpointer is None:
         try:
             checkpointer = await get_checkpointer()
         except Exception as e:
@@ -118,8 +163,32 @@ async def run_agent(
         "upload_context": upload_context,
     }
 
-    # Run the agent
-    result = await agent.ainvoke(input_state, config)
+    # Run the agent — retry once if the checkpointer connection was closed
+    # (can happen when two concurrent requests share the singleton and one
+    # finishes before the other, leaving the connection in a broken state).
+    _CONNECTION_ERRORS = (
+        "Cannot operate on a closed database",
+        "Connection closed",
+    )
+    try:
+        result = await agent.ainvoke(input_state, config)
+    except (ValueError, Exception) as exc:
+        exc_str = str(exc)
+        if any(msg in exc_str for msg in _CONNECTION_ERRORS):
+            logger.warning(
+                "Checkpointer connection error during ainvoke, retrying with fresh "
+                f"checkpointer: {exc}"
+            )
+            await _reset_checkpointer()
+            try:
+                fresh_cp = await get_checkpointer()
+            except Exception as init_exc:
+                logger.warning(f"Fresh checkpointer init failed: {init_exc}")
+                fresh_cp = None
+            agent = compile_agent(checkpointer=fresh_cp)
+            result = await agent.ainvoke(input_state, config)
+        else:
+            raise
 
     # Extract the final AI response
     messages = result.get("messages", [])
@@ -185,6 +254,7 @@ async def run_agent(
 
     # Clear the shared DB session
     set_db_session(None)
+    set_current_session_id(None)
 
     # Flush Langfuse traces to ensure they're sent
     flush_langfuse()

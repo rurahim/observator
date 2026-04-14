@@ -15,6 +15,7 @@ import ChartTooltip from '@/components/charts/ChartTooltip';
 import InteractiveLegend, { useChartLegend } from '@/components/charts/InteractiveLegend';
 import ChartToolbar from '@/components/charts/ChartToolbar';
 import ChartInsight from '@/components/charts/ChartInsight';
+import DataStory from '@/components/shared/DataStory';
 import DataMethodology from '@/components/charts/DataMethodology';
 import DataSourceWarning, { DEMAND_SOURCE_BREAK, SUPPLY_SOURCE_BREAK } from '@/components/charts/DataSourceWarning';
 import { ConfidenceBadge, getConfidenceTier } from '@/components/shared/ConfidenceBadge';
@@ -183,6 +184,13 @@ const SkillGapContent = () => {
       <FilterBar />
       <DrillBreadcrumb />
 
+      <DataStory
+        title="Supply vs Demand & SGI Trend"
+        method="Supply: Bayanat employment census aggregated by occupation. Demand: LinkedIn UAE job postings. SGI = (demand-supply)/demand × 100. National average reference at 20%."
+        quality="official+scraped"
+        tables={[{name:'vw_gap_cube', label:'Gap Analysis'}, {name:'vw_supply_talent', label:'Supply (842K)'}, {name:'vw_demand_jobs', label:'Demand (37K)'}]}
+        caveats="Supply and demand data cover different time periods (2015-2019 vs 2024-2025)."
+      >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-card rounded-xl border border-border-light shadow-card p-4 overflow-hidden">
           <ChartToolbar title={t('أعلى 8 عرض مقابل طلب', 'Top 8 Supply vs Demand')} data={liveSupplyDemand}>
@@ -242,7 +250,15 @@ const SkillGapContent = () => {
           </ChartToolbar>
         </motion.div>
       </div>
+      </DataStory>
 
+      <DataStory
+        title="Occupation Skill Gap Analysis"
+        method="SGI = (demand - supply) / demand × 100. Supply from Bayanat employment census (2015-2019). Demand from LinkedIn UAE job postings (2024-2025). Status: Critical >20%, Moderate 5-20%, Balanced ±5%, Surplus <-5%. Auto Risk = 1 - (SGI ratio) × 100. Margins: ±15% for demand, ±2-10% for supply depending on source."
+        quality="official+scraped"
+        tables={[{name:'vw_gap_cube', label:'Supply-Demand Gap'}, {name:'fact_supply_talent_agg', label:'Employment Census (842K)'}, {name:'fact_demand_vacancies_agg', label:'Job Postings (37K)'}]}
+        caveats="Supply data (2015-2019) and demand data (2024-2025) come from different time periods. SGI may overstate gaps where workforce composition has shifted since census."
+      >
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-card rounded-xl border border-border-light shadow-card overflow-hidden">
         <div className="p-4 border-b border-border-light flex items-center justify-between gap-4">
           <h3 className="text-sm font-semibold text-primary">{t('تفاصيل المهن', 'Occupation Details')}</h3>
@@ -317,6 +333,7 @@ const SkillGapContent = () => {
           </table>
         </div>
       </motion.div>
+      </DataStory>
     </div>
     </SplitPageLayout>
   );

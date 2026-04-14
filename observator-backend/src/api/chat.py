@@ -52,6 +52,7 @@ async def chat(
                 page_context=body.page_context,
                 internet_enabled=body.internet_search,
                 upload_context=body.upload_context,
+                stateless=body.stateless,
             )
             response_text = agent_result.get("message", "")
             trace_id = agent_result.get("trace_id", trace_id)

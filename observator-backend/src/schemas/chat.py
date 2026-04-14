@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
     internet_search: bool = False
     self_knowledge: bool = False
     upload_context: dict | None = None
+    stateless: bool = False  # Skip checkpointer — for auto-generated analysis calls
 
 
 class Citation(BaseModel):
