@@ -61,6 +61,7 @@ import {
   ArrowUpDown,
   Globe,
   Zap,
+  Loader2,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -339,6 +340,15 @@ const DemandSidePage = () => {
   const [graphSkillsPer, setGraphSkillsPer] = useState(5);
   const hasFilters = !!(regionFilter || industryFilter || expLevelFilter || empTypeFilter || iscoFilter);
 
+  // Future Demand Projection — local drill-down filters
+  const [demProjRegion, setDemProjRegion] = useState('');
+  const [demProjIsco, setDemProjIsco] = useState('');
+  const [demProjSector, setDemProjSector] = useState('');
+  const [demProjExp, setDemProjExp] = useState('');
+  const hasDemProjFilters = !!(demProjRegion || demProjIsco || demProjSector || demProjExp);
+  const [demExtResearch, setDemExtResearch] = useState<any>(null);
+  const [demExtLoading, setDemExtLoading] = useState(false);
+
   /* ── Data hooks ───────────────────────────────────────────────────────── */
   const { data: dashboard, isLoading: dashLoading, error: dashErr } = useDashboardSummary(
     regionFilter ? { emirate: regionFilter } : undefined
@@ -370,6 +380,34 @@ const DemandSidePage = () => {
   });
 
   const isLoading = loading || dashLoading || demandLoading;
+
+  // External research for demand projection (auto-trigger on filter change)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!demProjRegion && !demProjIsco && !demProjSector && !demProjExp) {
+        setDemExtResearch(null);
+        return;
+      }
+      setDemExtLoading(true);
+      try {
+        const token = localStorage.getItem('auth_token');
+        const res = await fetch(`${import.meta.env.VITE_API_URL || '/api'}/external-research/projection-signal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            metric: 'demand',
+            region: demProjRegion || undefined,
+            specialty: demProjIsco ? `ISCO group ${demProjIsco}` : undefined,
+            sector: demProjSector || undefined,
+            horizon_years: 5,
+          }),
+        });
+        if (res.ok) setDemExtResearch(await res.json());
+      } catch {}
+      setDemExtLoading(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [demProjRegion, demProjIsco, demProjSector, demProjExp]);
 
   /* ── Derived data ─────────────────────────────────────────────────────── */
 
@@ -822,24 +860,6 @@ const DemandSidePage = () => {
         </GlassCard>
       </div>
 
-      {/* Industry Hiring Bubble Cloud */}
-      {(demand?.top_industries?.length ?? 0) > 0 && (
-        <div className="bg-card rounded-2xl border border-border-light shadow-card p-5">
-          <BubbleCloud
-            title="Industry Hiring Landscape"
-            height={400}
-            nodes={(demand?.top_industries || []).slice(0, 20).map((ind: any, i: number) => ({
-              id: `ind-${i}`,
-              label: ind.industry || ind.name,
-              value: ind.count || ind.postings || 1,
-              category: i < 3 ? 'primary' : i < 8 ? 'secondary' : 'tertiary',
-              detail: `${(ind.pct || 0).toFixed(1)}% of all postings`,
-            }))}
-            categoryColors={{ primary: '#003366', secondary: '#007DB5', tertiary: '#C9A84C' }}
-          />
-        </div>
-      )}
-
       {/* Market Overview Insight */}
       {(() => {
         const vols = demand?.monthly_volume || [];
@@ -871,80 +891,41 @@ const DemandSidePage = () => {
         subtitle={t('توزيع الوظائف عبر الإمارات', 'Job distribution across UAE emirates')}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Emirate Heatmap */}
-        <GlassCard className="lg:col-span-1">
-          <DataStory
-            title="Demand by Emirate"
-            method="Job posting locations mapped to 7 UAE emirates."
-            quality="scraped"
-            tables={[{name:'fact_demand_vacancies_agg', label:'Job Vacancies'}, {name:'dim_region', label:'UAE Emirates'}]}
-          >
-          <h3 className="text-sm font-semibold text-primary mb-4 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-teal" />
-            {t('خريطة الطلب حسب الإمارة', 'Emirate Demand Heatmap')}
-          </h3>
-          {dashboard?.emirate_metrics?.length ? (
-            <div>
-              <EmirateHeatmap data={dashboard.emirate_metrics} />
-              <div className="flex items-center justify-center gap-4 mt-4">
-                {[
-                  { label: t('مرتفع', 'High'), color: COLORS.navy },
-                  { label: t('متوسط', 'Medium'), color: COLORS.teal },
-                  { label: t('منخفض', 'Low'), color: COLORS.gold },
-                  { label: t('قليل', 'Minimal'), color: '#CBD5E1' },
-                ].map(l => (
-                  <div key={l.label} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
-                    <span className="text-[10px] text-text-muted">{l.label}</span>
-                  </div>
-                ))}
-              </div>
+      {/* Emirate Demand Heatmap — full width, interactive */}
+      <GlassCard>
+        <DataStory
+          title="Geographic Demand Distribution"
+          method="Job posting locations from LinkedIn UAE mapped to 7 emirates. Click any emirate to filter the entire page."
+          quality="scraped"
+          tables={[{name:'fact_demand_vacancies_agg', label:'Job Vacancies (37K)'}, {name:'dim_region', label:'UAE Emirates (7)'}]}
+        >
+        <h3 className="text-sm font-semibold text-primary mb-4 flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-teal" />
+          {t('خريطة الطلب التفاعلية', 'Interactive Demand Map')}
+          {regionFilter && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal/10 text-teal font-medium">{regionFilter}</span>}
+        </h3>
+        {dashboard?.emirate_metrics?.length ? (
+          <div>
+            <EmirateHeatmap data={dashboard.emirate_metrics} />
+            <div className="flex items-center justify-center gap-4 mt-4">
+              {[
+                { label: t('مرتفع', 'High'), color: COLORS.navy },
+                { label: t('متوسط', 'Medium'), color: COLORS.teal },
+                { label: t('منخفض', 'Low'), color: COLORS.gold },
+                { label: t('قليل', 'Minimal'), color: '#CBD5E1' },
+              ].map(l => (
+                <div key={l.label} className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
+                  <span className="text-[10px] text-text-muted">{l.label}</span>
+                </div>
+              ))}
             </div>
-          ) : (
-            <ChartEmpty title={t('لا توجد بيانات', 'No emirate data')} />
-          )}
-          </DataStory>
-        </GlassCard>
-
-        {/* Emirate Demand Bars */}
-        <GlassCard className="lg:col-span-1">
-          <DataStory
-            title="Emirate Demand Volume"
-            method="Job posting count per emirate from dashboard summary."
-            quality="scraped"
-            tables={[{name:'vw_demand_jobs', label:'Demand Jobs View'}]}
-          >
-          <ChartToolbar
-            title={t('حجم الطلب لكل إمارة', 'Demand by Emirate')}
-            data={dashboard?.emirate_metrics as Record<string, unknown>[] | undefined}
-          >
-            {dashboard?.emirate_metrics?.length ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart
-                  data={dashboard.emirate_metrics}
-                  layout="vertical"
-                  margin={{ left: 70, right: 20, top: 5, bottom: 5 }}
-                >
-                  <CartesianGrid {...GRID_PROPS} horizontal={false} />
-                  <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                  <YAxis type="category" dataKey="emirate" tick={AXIS_TICK_SM} width={65} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="demand" name={t('الطلب', 'Demand')} radius={BAR_RADIUS_H} barSize={16}>
-                    {dashboard.emirate_metrics.map((_, i) => (
-                      <Cell key={i} fill={getSeriesColor(i)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <ChartEmpty title={t('لا توجد بيانات', 'No data')} />
-            )}
-          </ChartToolbar>
-          </DataStory>
-        </GlassCard>
-
-      </div>
+          </div>
+        ) : (
+          <ChartEmpty title={t('لا توجد بيانات', 'No emirate data')} />
+        )}
+        </DataStory>
+      </GlassCard>
 
       {/* Emirate detail cards */}
       {dashboard?.emirate_metrics?.length ? (
@@ -1761,10 +1742,98 @@ const DemandSidePage = () => {
         subtitle={t('التوقعات بناءً على الاتجاهات الحالية وتأثير الذكاء الاصطناعي', 'Projections based on current trends & AI impact')}
       />
 
+      {/* Projection Drill-Down Filters */}
+      <GlassCard>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
+            <Search className="w-4 h-4" />
+            {t('فلاتر التوقعات المتقدمة', 'Projection Drill-Down Filters')}
+          </h3>
+          {hasDemProjFilters && (
+            <button onClick={() => { setDemProjRegion(''); setDemProjIsco(''); setDemProjSector(''); setDemProjExp(''); }}
+              className="text-[10px] text-red-500 hover:underline font-medium">{t('مسح', 'Clear')}</button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('الإمارة', 'Region')}</label>
+            <select value={demProjRegion} onChange={e => setDemProjRegion(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none">
+              <option value="">{t('الكل', 'All Emirates')}</option>
+              {regionOptions.map((r: any) => <option key={r.value || r.region_code} value={r.value || r.region_code}>{r.label || r.emirate}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('مجموعة ISCO', 'ISCO Group')}</label>
+            <select value={demProjIsco} onChange={e => setDemProjIsco(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none">
+              <option value="">{t('الكل', 'All Groups')}</option>
+              {[{v:'1',l:'Managers'},{v:'2',l:'Professionals'},{v:'3',l:'Technicians'},{v:'4',l:'Clerical'},{v:'5',l:'Service & Sales'},{v:'7',l:'Craft & Trade'},{v:'8',l:'Machine Operators'},{v:'9',l:'Elementary'}].map(g => <option key={g.v} value={g.v}>{g.v} — {g.l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('القطاع', 'Sector')}</label>
+            <select value={demProjSector} onChange={e => setDemProjSector(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none">
+              <option value="">{t('الكل', 'All Sectors')}</option>
+              {(demand?.top_industries ?? []).slice(0, 15).map((ind: any) => <option key={ind.industry} value={ind.industry}>{ind.industry}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('مستوى الخبرة', 'Experience')}</label>
+            <select value={demProjExp} onChange={e => setDemProjExp(e.target.value)}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none">
+              <option value="">{t('الكل', 'All Levels')}</option>
+              {['Entry level', 'Associate', 'Mid-Senior level', 'Director', 'Executive'].map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+        </div>
+        {hasDemProjFilters && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {demProjRegion && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-teal/8 text-teal font-medium">{demProjRegion} <button onClick={() => setDemProjRegion('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjIsco && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-navy/8 text-navy font-medium">ISCO {demProjIsco} <button onClick={() => setDemProjIsco('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjSector && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-amber-100 text-amber-800 font-medium">{demProjSector.slice(0,20)} <button onClick={() => setDemProjSector('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjExp && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-emerald/8 text-emerald-700 font-medium">{demProjExp} <button onClick={() => setDemProjExp('')}><X className="w-2.5 h-2.5" /></button></span>}
+          </div>
+        )}
+      </GlassCard>
+
+      {/* External Research Factors */}
+      {(demExtLoading || demExtResearch) && (
+        <GlassCard>
+          <div className="flex items-center gap-2 mb-3">
+            <Globe className="w-4 h-4 text-amber-600" />
+            <h4 className="text-sm font-bold text-amber-900">{t('عوامل خارجية — بحث الويب', 'External Factors — Web Research')}</h4>
+            {demExtLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />}
+          </div>
+          {demExtResearch && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 mb-2">
+                <span className={`text-lg font-bold tabular-nums ${(demExtResearch.market_signal_pct ?? 0) > 0 ? 'text-emerald-600' : (demExtResearch.market_signal_pct ?? 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                  {(demExtResearch.market_signal_pct ?? 0) > 0 ? '+' : ''}{demExtResearch.market_signal_pct ?? 0}%
+                </span>
+                <span className="text-xs text-gray-500">{t('إشارة السوق الموصى بها', 'Recommended signal')} ({demExtResearch.confidence})</span>
+              </div>
+              {demExtResearch.rationale && <p className="text-[11px] text-gray-700 bg-amber-50 rounded-lg p-2">{demExtResearch.rationale}</p>}
+              {(demExtResearch.factors || []).slice(0, 4).map((f: any, i: number) => (
+                <div key={i} className="flex items-start gap-2 text-[10px]">
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${f.impact === 'positive' ? 'bg-emerald-500' : f.impact === 'negative' ? 'bg-red-500' : 'bg-gray-300'}`} />
+                  <div>
+                    <span className="font-semibold text-gray-800">{f.title}</span>
+                    <span className="text-gray-500 ml-1">{f.summary?.slice(0, 120)}</span>
+                    {f.source_url && <a href={f.source_url} target="_blank" rel="noopener" className="ml-1 text-amber-700 hover:underline">[source]</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+      )}
+
       <GlassCard>
         <DataStory
           title="Future Demand Projection"
-          method="Projected demand based on historical trend extrapolation. AI displacement and new AI job creation factors applied."
+          method="Projected demand based on historical trend extrapolation. AI displacement and new AI job creation factors applied. External factors from web research adjust the forecast."
           quality="model-generated"
           tables={[{name:'vw_forecast_demand', label:'Forecast Demand'}, {name:'vw_ai_impact', label:'AI Impact'}]}
           caveats="Projections are model-generated estimates, not predictions. Based on current trends which may change."
