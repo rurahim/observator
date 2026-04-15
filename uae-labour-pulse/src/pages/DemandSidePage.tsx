@@ -325,15 +325,19 @@ const DemandSidePage = () => {
   const { t } = useLanguage();
   const loading = usePageLoading(400);
 
-  /* ── Shared state ─────────────────────────────────────────────────────── */
+  /* ── Shared state — ALL filter dimensions ──────────────────────────── */
   const [regionFilter, setRegionFilter] = useState<string>('');
   const [industryFilter, setIndustryFilter] = useState<string>('');
   const [expLevelFilter, setExpLevelFilter] = useState<string>('');
   const [empTypeFilter, setEmpTypeFilter] = useState<string>('');
+  const [iscoFilter, setIscoFilter] = useState<string>('');
   const [occSearch, setOccSearch] = useState('');
   const [occPage, setOccPage] = useState(1);
   const [selectedOccId, setSelectedOccId] = useState<number | null>(null);
   const [salarySort, setSalarySort] = useState<'median' | 'max' | 'sample'>('median');
+  const [graphOccLimit, setGraphOccLimit] = useState(20);
+  const [graphSkillsPer, setGraphSkillsPer] = useState(5);
+  const hasFilters = !!(regionFilter || industryFilter || expLevelFilter || empTypeFilter || iscoFilter);
 
   /* ── Data hooks ───────────────────────────────────────────────────────── */
   const { data: dashboard, isLoading: dashLoading, error: dashErr } = useDashboardSummary(
@@ -354,11 +358,16 @@ const DemandSidePage = () => {
     search: occSearch || undefined,
     region: regionFilter || undefined,
     page: occPage,
-  });
+  } as any);
   const { data: futureProj, isLoading: futureLoading } = useFutureProjection();
   const { data: explorerFilters } = useExplorerFilters();
   const { data: occSkills, isLoading: occSkillsLoading } = useOccupationSkillsDetail(selectedOccId);
-  const { data: skillNetGraph } = useSkillNetworkGraph({ occ_limit: 20, skills_per_occ: 5 });
+  const { data: skillNetGraph } = useSkillNetworkGraph({
+    occ_limit: graphOccLimit,
+    skills_per_occ: graphSkillsPer,
+    ...(iscoFilter ? { isco_group: iscoFilter } : {}),
+    ...(regionFilter ? { region: regionFilter } : {}),
+  });
 
   const isLoading = loading || dashLoading || demandLoading;
 
@@ -594,17 +603,54 @@ const DemandSidePage = () => {
               ))}
             </select>
           </div>
-          {/* Active filter count badge */}
-          {(regionFilter || industryFilter || expLevelFilter || empTypeFilter) && (
+          <div className="w-px h-5 bg-gray-200" />
+          {/* ISCO Major Group */}
+          <div className="flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <select
+              className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-[#007DB5]/30 focus:border-[#007DB5] outline-none"
+              value={iscoFilter}
+              onChange={(e) => { setIscoFilter(e.target.value); setOccPage(1); }}
+            >
+              <option value="">{t('كل مجموعات ISCO', 'All ISCO Groups')}</option>
+              {[
+                { v: '0', l: '0 — Armed Forces' }, { v: '1', l: '1 — Managers' },
+                { v: '2', l: '2 — Professionals' }, { v: '3', l: '3 — Technicians' },
+                { v: '4', l: '4 — Clerical Support' }, { v: '5', l: '5 — Service & Sales' },
+                { v: '6', l: '6 — Agriculture' }, { v: '7', l: '7 — Craft & Trade' },
+                { v: '8', l: '8 — Machine Operators' }, { v: '9', l: '9 — Elementary' },
+              ].map(g => <option key={g.v} value={g.v}>{g.l}</option>)}
+            </select>
+          </div>
+          <div className="w-px h-5 bg-gray-200" />
+          {/* Graph controls */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-gray-400 font-semibold uppercase">{t('خريطة', 'Graph')}:</span>
+            <select value={graphOccLimit} onChange={e => setGraphOccLimit(Number(e.target.value))}
+              className="text-[10px] border border-gray-200 rounded px-1.5 py-1 bg-white w-[60px]">
+              {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n} occ</option>)}
+            </select>
+            <select value={graphSkillsPer} onChange={e => setGraphSkillsPer(Number(e.target.value))}
+              className="text-[10px] border border-gray-200 rounded px-1.5 py-1 bg-white w-[60px]">
+              {[3, 5, 8, 10, 0].map(n => <option key={n} value={n}>{n === 0 ? 'All' : n} sk</option>)}
+            </select>
+          </div>
+          {/* Clear all */}
+          {hasFilters && (
             <>
               <div className="w-px h-5 bg-gray-200" />
               <button
-                onClick={() => { setRegionFilter(''); setIndustryFilter(''); setExpLevelFilter(''); setEmpTypeFilter(''); setOccPage(1); }}
-                className="text-xs text-[#007DB5] hover:text-[#003366] font-medium flex items-center gap-1"
+                onClick={() => { setRegionFilter(''); setIndustryFilter(''); setExpLevelFilter(''); setEmpTypeFilter(''); setIscoFilter(''); setOccPage(1); }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
               >
-                ✕ {t('مسح الفلاتر', 'Clear filters')}
+                ✕ {t('مسح الكل', 'Clear all')}
               </button>
             </>
+          )}
+          {hasFilters && (
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-[#007DB5]/10 text-[#007DB5] font-semibold">
+              {[regionFilter, industryFilter, expLevelFilter, empTypeFilter, iscoFilter].filter(Boolean).length} {t('فلتر نشط', 'active')}
+            </span>
           )}
         </div>
       </div>
