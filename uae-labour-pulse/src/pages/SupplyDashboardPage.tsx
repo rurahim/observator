@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useFilters } from '@/contexts/FilterContext';
 import {
@@ -10,6 +11,7 @@ import {
   useExplorerByInstitution, useExplorerByProgram, useExplorerBySkill,
   useSkillMatchingSummary, useSupplyChainGraph,
   useSupplyFilterOptions,
+  useUploadChatFile, type ChatFile,
 } from '@/api/hooks';
 import { useStreamChatWithTraces } from '@/api/useStreamChatWithTraces';
 import { parseVisualization, stripChartBlock } from '@/components/chat/parseVisualization';
@@ -258,7 +260,12 @@ const SupplyDashboardPage = () => {
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [webSearchOn, setWebSearchOn] = useState(false);
+  const [selfKnowledgeOn, setSelfKnowledgeOn] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<ChatFile[]>([]);
+  const [chatSessionId] = useState<string>(() => crypto.randomUUID());
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFile = useUploadChatFile();
 
   const {
     streamMessage, streamingText, isStreaming, traces, citations: streamCitations,
@@ -266,6 +273,7 @@ const SupplyDashboardPage = () => {
   } = useStreamChatWithTraces({
     pageContext: 'supply_education_dashboard',
     internetSearch: webSearchOn,
+    selfKnowledge: selfKnowledgeOn,
   });
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, streamingText]);
@@ -275,7 +283,36 @@ const SupplyDashboardPage = () => {
     if (!q || isStreaming) return;
     setChatInput('');
     setChatMessages(prev => [...prev, { role: 'user', content: q }]);
-    await streamMessage(q);
+    let messageWithContext = q;
+    if (attachedFiles.length > 0) {
+      const fileList = attachedFiles.map(f => `- ${f.filename} (${f.type}): ${f.summary}`).join('\n');
+      messageWithContext = `[ATTACHED FILES — use list_chat_files() and query_chat_file(file_id) tools to read them]\n${fileList}\n\nUSER QUESTION: ${q}`;
+    }
+    await streamMessage(messageWithContext, chatSessionId);
+  };
+
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const result = await uploadFile.mutateAsync({ file: files[i], sessionId: chatSessionId });
+        setAttachedFiles(prev => [...prev, result]);
+      } catch (err: any) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `Failed to upload ${files[i].name}: ${err.message}` }]);
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeChatFile = async (fileId: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.file_id !== fileId));
+    try {
+      const token = localStorage.getItem('auth_token');
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/chat/files/${chatSessionId}/${fileId}`, {
+        method: 'DELETE', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+    } catch {}
   };
 
   // When streaming completes, add assistant message with parsed visualization
@@ -418,8 +455,18 @@ const SupplyDashboardPage = () => {
               {t('بحث مباشر', 'Web Search')}
               {webSearchOn && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
             </button>
+            <button onClick={() => setSelfKnowledgeOn(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                selfKnowledgeOn ? 'bg-[#C9A84C] text-white border-[#C9A84C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#C9A84C]/30'
+              }`}>
+              <Sparkles className="w-3.5 h-3.5" />
+              {t('معرفة ذاتية', 'Self Knowledge')}
+              {selfKnowledgeOn && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+            </button>
             <span className="text-[10px] text-gray-400">
-              {webSearchOn ? t('بحث مباشر عبر Tavily', 'Live Tavily web search')
+              {webSearchOn && selfKnowledgeOn ? t('بحث + معرفة', 'Web + Self Knowledge')
+                : webSearchOn ? t('بحث مباشر عبر Tavily', 'Live Tavily web search')
+                : selfKnowledgeOn ? t('معرفة النموذج + DB', 'Model knowledge + DB')
                 : t('قاعدة بيانات التعليم العالي', 'UAE higher education database')}
             </span>
           </div>
@@ -462,7 +509,7 @@ const SupplyDashboardPage = () => {
                       prose-table:text-xs prose-th:bg-[#003366]/5 prose-th:text-[#003366] prose-th:font-semibold prose-th:px-3 prose-th:py-1.5
                       prose-td:px-3 prose-td:py-1 prose-td:border-gray-200
                       prose-strong:text-[#003366]">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                     </div>
                   )}
                   {msg.visualization && (
@@ -481,7 +528,7 @@ const SupplyDashboardPage = () => {
                     prose-headings:text-gray-900 prose-headings:font-bold prose-p:my-1.5
                     prose-table:text-xs prose-th:bg-[#003366]/5 prose-th:text-[#003366] prose-th:font-semibold prose-th:px-3 prose-th:py-1.5
                     prose-td:px-3 prose-td:py-1 prose-strong:text-[#003366]">
-                    <ReactMarkdown>{stripChartBlock(streamingText)}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripChartBlock(streamingText)}</ReactMarkdown>
                   </div>
                   <span className="inline-block w-1.5 h-4 bg-[#003366] animate-pulse ml-0.5 align-middle" />
                 </div>
@@ -577,12 +624,38 @@ const SupplyDashboardPage = () => {
         </div>
 
         <div className="p-4 border-t border-gray-100">
+          {(attachedFiles.length > 0 || uploadFile.isPending) && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachedFiles.map(f => (
+                <div key={f.file_id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#003366]/8 border border-[#003366]/15 rounded-lg text-[11px]">
+                  <Layers className="w-3 h-3 text-[#003366]" />
+                  <span className="font-medium text-[#003366]">{f.filename}</span>
+                  <span className="text-[9px] text-gray-400">{f.summary?.slice(0, 40)}{(f.summary?.length || 0) > 40 ? '..' : ''}</span>
+                  <button onClick={() => removeChatFile(f.file_id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+              {uploadFile.isPending && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[11px]">
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                  <span className="text-amber-700">Uploading...</span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2">
+            <input ref={fileInputRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.txt,.json,.md,.log" onChange={handleChatFileUpload} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadFile.isPending}
+              title={t('إرفاق ملف', 'Attach file (Excel, CSV, PDF, TXT)')}
+              className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-[#003366] transition-colors disabled:opacity-50">
+              <Layers className="w-4 h-4" />
+            </button>
             <input
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-              placeholder={t('اسأل أي سؤال — البيانات، التحليل، تغيير الرسوم البيانية...', 'Ask anything — data, analysis, change charts...')}
+              placeholder={attachedFiles.length > 0
+                ? t('اسأل عن الملف المرفق...', 'Ask about your attached file(s)...')
+                : t('اسأل أي سؤال — البيانات، التحليل، تغيير الرسوم البيانية...', 'Ask anything — data, analysis, change charts...')}
               className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]/40 outline-none"
               disabled={isStreaming}
             />
@@ -599,7 +672,7 @@ const SupplyDashboardPage = () => {
             )}
           </div>
           <p className="text-[10px] text-gray-400 mt-1.5 text-center">
-            {t('وكيل التعليم العالي', 'Higher Ed AI Agent')} | {t('بحث ويب + تحكم بلوحة المعلومات', 'Web search + Dashboard control')}
+            {t('وكيل التعليم العالي', 'Higher Ed AI Agent')} | 47 {t('جدول', 'tables')} | {t('إرفاق ملفات + بحث ويب + تحكم بلوحة المعلومات', 'File attachments + Web search + Dashboard control')}
           </p>
         </div>
       </div>

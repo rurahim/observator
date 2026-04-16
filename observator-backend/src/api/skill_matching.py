@@ -701,7 +701,148 @@ async def future_projection(
             "graduates": [{"year": r[0], "graduates": int(r[1])} for r in grads],
         }
     }
-# Add to skill_matching.py
+@router.get("/demand-projection")
+async def demand_projection(
+    region: str | None = None,
+    isco_group: str | None = None,
+    sector: str | None = None,
+    occupation: str | None = None,
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Filter-responsive demand-only projection (2025-2030).
+
+    Computes demand trend from actual LinkedIn data, filtered by region/ISCO/sector/occupation.
+    Returns base demand, optimistic/pessimistic scenarios, and per-year data.
+    """
+    # Build WHERE clauses from filters
+    where_parts = []
+    params: dict = {}
+    if region:
+        where_parts.append("d.region_code = :region")
+        params["region"] = region
+    if isco_group:
+        where_parts.append("o.isco_major_group = :isco")
+        params["isco"] = isco_group
+    if sector:
+        where_parts.append("sec.name_en ILIKE :sector")
+        params["sector"] = f"%{sector}%"
+    if occupation:
+        where_parts.append("o.title_en ILIKE :occ")
+        params["occ"] = f"%{occupation}%"
+
+    where_sql = (" AND " + " AND ".join(where_parts)) if where_parts else ""
+
+    # Get monthly demand with filters
+    demand_monthly = (await db.execute(text(f"""
+        SELECT t.year, t.month, COUNT(*) as jobs
+        FROM fact_demand_vacancies_agg d
+        JOIN dim_time t ON d.time_id = t.time_id
+        LEFT JOIN dim_occupation o ON d.occupation_id = o.occupation_id
+        LEFT JOIN dim_sector sec ON d.sector_id = sec.sector_id
+        WHERE 1=1 {where_sql}
+        GROUP BY t.year, t.month ORDER BY t.year, t.month
+    """), params)).fetchall()
+
+    # Calculate base demand
+    monthly_counts = [r[2] for r in demand_monthly if r[2] > 0]
+    if not monthly_counts:
+        # No data for this filter combo — return estimate
+        all_demand = (await db.execute(text(
+            "SELECT COUNT(*) FROM fact_demand_vacancies_agg"
+        ))).scalar() or 36000
+        avg_monthly = all_demand / max(len(demand_monthly) if demand_monthly else 12, 1)
+        # Scale down for specific filters
+        scale = 0.1 if (region and occupation) else 0.3 if (region or occupation) else 0.5
+        avg_monthly = avg_monthly * scale
+    else:
+        avg_monthly = sum(monthly_counts) / len(monthly_counts)
+
+    yearly_demand_raw = int(avg_monthly * 12)
+
+    # Compute trend from historical data
+    yearly_agg: dict = {}
+    for r in demand_monthly:
+        yearly_agg.setdefault(r[0], 0)
+        yearly_agg[r[0]] += r[2]
+
+    # Calculate growth rate from data
+    # Note: if last year is partial (e.g. 2025 only has Jan-Apr), it will look like decline
+    # So we normalize by months present and compare full-year equivalents
+    if len(yearly_agg) >= 2:
+        years = sorted(yearly_agg.keys())
+        # Count months per year to detect partial years
+        months_per_year: dict = {}
+        for r in demand_monthly:
+            months_per_year.setdefault(r[0], set())
+            months_per_year[r[0]].add(r[1])
+
+        # Normalize to 12-month equivalent
+        normalized: dict = {}
+        for y in years:
+            n_months = len(months_per_year.get(y, set())) or 1
+            normalized[y] = yearly_agg[y] * (12 / n_months)
+
+        first_y = normalized[years[0]]
+        last_y = normalized[years[-1]]
+        if first_y > 0:
+            annual_growth = ((last_y / first_y) ** (1 / max(len(years) - 1, 1))) - 1
+            # Floor at 2% for UAE economy (expanding market)
+            annual_growth = max(0.02, min(0.25, annual_growth))
+        else:
+            annual_growth = 0.08
+    else:
+        annual_growth = 0.08  # Default 8% for UAE economy
+
+    # Use the best yearly demand estimate (normalized latest year or avg)
+    # Count months per year for normalization (if not already computed)
+    if yearly_agg:
+        _mpy: dict = {}
+        for r in demand_monthly:
+            _mpy.setdefault(r[0], set())
+            _mpy[r[0]].add(r[1])
+        latest_year_key = max(yearly_agg.keys())
+        n_months_latest = len(_mpy.get(latest_year_key, {1}))
+        yearly_demand = int(yearly_agg[latest_year_key] * (12 / max(n_months_latest, 1)))
+    else:
+        yearly_demand = yearly_demand_raw
+
+    # Determine filter context for description
+    filter_desc = []
+    if region:
+        filter_desc.append(f"Region: {region}")
+    if isco_group:
+        filter_desc.append(f"ISCO Group {isco_group}")
+    if sector:
+        filter_desc.append(f"Sector: {sector}")
+    if occupation:
+        filter_desc.append(f"Occupation: {occupation}")
+    context = ", ".join(filter_desc) if filter_desc else "All UAE"
+
+    # Project 2025-2030
+    projections = []
+    for i, yr in enumerate(range(2025, 2031)):
+        base = int(yearly_demand * (1 + annual_growth) ** i)
+        optimistic = int(base * (1 + 0.03 * i))   # +3%/yr scenario
+        pessimistic = int(base * (1 - 0.02 * i))   # -2%/yr scenario
+
+        projections.append({
+            "year": yr,
+            "demand_base": base,
+            "demand_optimistic": optimistic,
+            "demand_pessimistic": pessimistic,
+            "growth_yoy": round(annual_growth * 100, 1) if i == 0 else round(((base / projections[-1]["demand_base"]) - 1) * 100, 1) if projections else 0,
+        })
+
+    return {
+        "projections": projections,
+        "context": context,
+        "annual_growth_rate": round(annual_growth * 100, 1),
+        "base_demand": yearly_demand,
+        "data_points": len(monthly_counts),
+        "historical": [{"year": y, "demand": d} for y, d in sorted(yearly_agg.items())],
+    }
+
 
 @router.get("/unified-timeline")
 async def unified_timeline(

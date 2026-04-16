@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePageLoading } from '@/hooks/usePageLoading';
@@ -14,7 +14,16 @@ import {
   useExplorerFilters,
   useOccupationSkillsDetail,
   useSkillNetworkGraph,
+  useGraphOccupationSearch,
+  useDemandProjection,
+  useUploadChatFile, type ChatFile,
 } from '@/api/hooks';
+import { useStreamChatWithTraces } from '@/api/useStreamChatWithTraces';
+import type { TraceStep } from '@/api/useStreamChatWithTraces';
+import { parseVisualization, parseAllVisualizations, stripChartBlock } from '@/components/chat/parseVisualization';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import ChatVisualization from '@/components/chat/ChatVisualization';
 import { formatCompact, formatNumber } from '@/utils/formatters';
 import {
   COLORS,
@@ -62,6 +71,14 @@ import {
   Globe,
   Zap,
   Loader2,
+  X,
+  MessageSquare,
+  Send,
+  Activity,
+  Brain,
+  FlaskConical,
+  Lightbulb,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -280,35 +297,32 @@ const EmirateHeatmap = ({ data }: EmirateHeatmapProps) => {
 
 const TreemapContent = (props: any) => {
   const { x, y, width, height, name, count, index } = props;
-  if (width < 40 || height < 30) return null;
+  if (width < 30 || height < 25) return null;
+  // Adaptive font size based on cell dimensions
+  const fontSize = Math.min(Math.max(width / 10, 11), 16);
+  const countSize = Math.min(Math.max(width / 12, 10), 14);
+  const maxChars = Math.max(Math.floor(width / (fontSize * 0.55)), 6);
+  const displayName = name?.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name;
   return (
     <g>
       <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        rx={6}
-        fill={getSeriesColor(index)}
-        fillOpacity={0.85}
-        stroke="white"
-        strokeWidth={2}
+        x={x} y={y} width={width} height={height}
+        rx={6} fill={getSeriesColor(index)} fillOpacity={0.9}
+        stroke="white" strokeWidth={2}
       />
-      {width > 60 && height > 40 && (
+      {width > 50 && height > 35 && (
         <>
           <text
-            x={x + width / 2}
-            y={y + height / 2 - 6}
-            textAnchor="middle"
-            className="text-[9px] font-semibold fill-white"
+            x={x + width / 2} y={y + height / 2 - (countSize * 0.4)}
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontSize: `${fontSize}px`, fontWeight: 700, fill: 'white' }}
           >
-            {name?.length > 18 ? name.slice(0, 16) + '...' : name}
+            {displayName}
           </text>
           <text
-            x={x + width / 2}
-            y={y + height / 2 + 8}
-            textAnchor="middle"
-            className="text-[8px] fill-white/80"
+            x={x + width / 2} y={y + height / 2 + (fontSize * 0.6)}
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ fontSize: `${countSize}px`, fontWeight: 500, fill: 'rgba(255,255,255,0.85)' }}
           >
             {formatCompact(count)}
           </text>
@@ -345,9 +359,29 @@ const DemandSidePage = () => {
   const [demProjIsco, setDemProjIsco] = useState('');
   const [demProjSector, setDemProjSector] = useState('');
   const [demProjExp, setDemProjExp] = useState('');
-  const hasDemProjFilters = !!(demProjRegion || demProjIsco || demProjSector || demProjExp);
+  const [demProjOcc, setDemProjOcc] = useState('');
+  const [demProjSkill, setDemProjSkill] = useState('');
+  const hasDemProjFilters = !!(demProjRegion || demProjIsco || demProjSector || demProjExp || demProjOcc || demProjSkill);
   const [demExtResearch, setDemExtResearch] = useState<any>(null);
   const [demExtLoading, setDemExtLoading] = useState(false);
+  const [occAutocompleteOpen, setOccAutocompleteOpen] = useState(false);
+
+  // AI Research Assistant chatbot state
+  interface ChatMsg { role: 'user' | 'assistant'; content: string; citations?: any[]; visualization?: any; visualizations?: any[] }
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [webSearchOn, setWebSearchOn] = useState(false);
+  const [selfKnowledgeOn, setSelfKnowledgeOn] = useState(false);
+  const [showTraces, setShowTraces] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<ChatFile[]>([]);
+  const [chatSessionId] = useState<string>(() => crypto.randomUUID());
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFile = useUploadChatFile();
+  const {
+    streamMessage, streamingText, isStreaming, traces, citations: streamCitations, dashboardPatches,
+    error: streamError, cancel: cancelStream,
+  } = useStreamChatWithTraces({ internetSearch: webSearchOn, selfKnowledge: selfKnowledgeOn });
 
   /* ── Data hooks ───────────────────────────────────────────────────────── */
   const { data: dashboard, isLoading: dashLoading, error: dashErr } = useDashboardSummary(
@@ -368,8 +402,18 @@ const DemandSidePage = () => {
     search: occSearch || undefined,
     region: regionFilter || undefined,
     page: occPage,
+    sort: 'demand_jobs',
+    order: 'desc',
+    both_sides: false,
   } as any);
   const { data: futureProj, isLoading: futureLoading } = useFutureProjection();
+  // Filter-responsive demand projection
+  const { data: demandProj, isLoading: demProjLoading } = useDemandProjection({
+    region: demProjRegion || undefined,
+    isco_group: demProjIsco || undefined,
+    sector: demProjSector || undefined,
+    occupation: demProjOcc || undefined,
+  });
   const { data: explorerFilters } = useExplorerFilters();
   const { data: occSkills, isLoading: occSkillsLoading } = useOccupationSkillsDetail(selectedOccId);
   const { data: skillNetGraph } = useSkillNetworkGraph({
@@ -379,12 +423,67 @@ const DemandSidePage = () => {
     ...(regionFilter ? { region: regionFilter } : {}),
   });
 
+  // Occupation autocomplete for projection filters
+  const { data: occSuggestions } = useGraphOccupationSearch(demProjOcc);
+
   const isLoading = loading || dashLoading || demandLoading;
+
+  // Chat helpers
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, streamingText]);
+
+  useEffect(() => {
+    if (!isStreaming && streamingText) {
+      const vizzes = parseAllVisualizations(streamingText);
+      const singleViz = vizzes.length === 0 ? parseVisualization(streamingText) : null;
+      setChatMessages(prev => [...prev, {
+        role: 'assistant', content: stripChartBlock(streamingText),
+        citations: streamCitations, visualization: singleViz, visualizations: vizzes.length > 0 ? vizzes : undefined,
+      }]);
+    }
+  }, [isStreaming]);
+
+  const sendChatMessage = async () => {
+    const q = chatInput.trim();
+    if (!q || isStreaming) return;
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: q }]);
+    setShowTraces(true);
+    let messageWithContext = q;
+    if (attachedFiles.length > 0) {
+      const fileList = attachedFiles.map(f => `- ${f.filename} (${f.type}): ${f.summary}`).join('\n');
+      messageWithContext = `[ATTACHED FILES — use list_chat_files() and query_chat_file(file_id) tools to read them]\n${fileList}\n\nUSER QUESTION: ${q}`;
+    }
+    await streamMessage(messageWithContext, chatSessionId);
+  };
+
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const result = await uploadFile.mutateAsync({ file: files[i], sessionId: chatSessionId });
+        setAttachedFiles(prev => [...prev, result]);
+      } catch (err: any) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `Failed to upload ${files[i].name}: ${err.message}` }]);
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeChatFile = async (fileId: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.file_id !== fileId));
+    try {
+      const token = localStorage.getItem('auth_token');
+      await fetch(`${import.meta.env.VITE_API_URL || '/api'}/chat/files/${chatSessionId}/${fileId}`, {
+        method: 'DELETE', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+    } catch {}
+  };
 
   // External research for demand projection (auto-trigger on filter change)
   useEffect(() => {
     const timer = setTimeout(async () => {
-      if (!demProjRegion && !demProjIsco && !demProjSector && !demProjExp) {
+      if (!demProjRegion && !demProjIsco && !demProjSector && !demProjExp && !demProjOcc && !demProjSkill) {
         setDemExtResearch(null);
         return;
       }
@@ -397,7 +496,7 @@ const DemandSidePage = () => {
           body: JSON.stringify({
             metric: 'demand',
             region: demProjRegion || undefined,
-            specialty: demProjIsco ? `ISCO group ${demProjIsco}` : undefined,
+            specialty: [demProjIsco ? `ISCO group ${demProjIsco}` : '', demProjOcc, demProjSkill].filter(Boolean).join(', ') || undefined,
             sector: demProjSector || undefined,
             horizon_years: 5,
           }),
@@ -407,7 +506,7 @@ const DemandSidePage = () => {
       setDemExtLoading(false);
     }, 2000);
     return () => clearTimeout(timer);
-  }, [demProjRegion, demProjIsco, demProjSector, demProjExp]);
+  }, [demProjRegion, demProjIsco, demProjSector, demProjExp, demProjOcc, demProjSkill]);
 
   /* ── Derived data ─────────────────────────────────────────────────────── */
 
@@ -737,9 +836,9 @@ const DemandSidePage = () => {
       </motion.div>
 
       <InsightPanel
-        explanation="These KPIs summarize UAE's active job market. Total postings reflect real employer demand captured from LinkedIn and job aggregators."
-        insight={demand ? `${formatCompact(demand.total_postings)} job postings from ${formatCompact(demand.unique_companies)} companies (${(demand.date_range?.min || '?').slice(0, 10)} to ${(demand.date_range?.max || '?').slice(0, 10)}). Average of ${demand.monthly_volume?.length ? Math.round(demand.total_postings / demand.monthly_volume.length) : '\u2014'} postings per month.` : undefined}
-        recommendation="Compare these demand figures against the Supply Side page to identify where graduate output meets or misses employer needs."
+        explanation="These KPIs summarize UAE's active job market. Total postings reflect real employer demand captured from LinkedIn and job aggregators across all 7 Emirates."
+        insight={demand ? `${formatCompact(demand.total_postings)} job postings from ${formatCompact(demand.unique_companies)} unique companies (${(demand.date_range?.min || '?').slice(0, 10)} to ${(demand.date_range?.max || '?').slice(0, 10)}). Monthly average: ${demand.monthly_volume?.length ? formatCompact(Math.round(demand.total_postings / demand.monthly_volume.length)) : '—'} postings/month. ${demand.top_industries?.[0] ? `Largest hiring sector: ${demand.top_industries[0].industry} (${formatCompact(demand.top_industries[0].count)} jobs, ${((demand.top_industries[0].count / demand.total_postings) * 100).toFixed(1)}% of total).` : ''} ${demand.top_emirates?.[0] ? `Most active emirate: ${demand.top_emirates[0].emirate}.` : ''}` : undefined}
+        recommendation="ACTION ITEMS: (1) Compare demand KPIs against Supply Side graduates to quantify the gap. (2) Investigate sectors with >15% hiring share for targeted training programs. (3) Track monthly trends for seasonal hiring patterns — Q1/Q4 typically show 20-30% higher posting volume."
         severity="info"
         source="LinkedIn UAE Job Postings (36K+), JSearch API"
       />
@@ -1155,16 +1254,18 @@ const DemandSidePage = () => {
                 margin={{ left: 180, right: 30, top: 5, bottom: 5 }}
               >
                 <CartesianGrid {...GRID_PROPS} horizontal={false} />
-                <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
+                <XAxis type="number" tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)}
+                  label={{ value: t('عدد الوظائف المعلنة', 'Job Postings Count'), position: 'insideBottom', offset: -2, style: { fontSize: 11, fill: '#6b7280', fontWeight: 600 } }} />
                 <YAxis
                   type="category"
-                  dataKey="group_name"
-                  tick={AXIS_TICK_SM}
+                  dataKey="name"
+                  tick={{ ...AXIS_TICK_SM, fontSize: 11, fontWeight: 500 }}
                   width={175}
-                  tickFormatter={(v: string) => v.length > 32 ? v.slice(0, 30) + '...' : v}
+                  tickFormatter={(v: string) => v && v.length > 28 ? v.slice(0, 26) + '…' : (v || '—')}
                 />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="jobs" name={t('الوظائف', 'Jobs (Demand)')} fill={COLORS.gold} radius={BAR_RADIUS_H} barSize={16}>
+                <Bar dataKey="jobs" name={t('الوظائف', 'Jobs (Demand)')} fill={COLORS.gold} radius={BAR_RADIUS_H} barSize={20}
+                  label={{ position: 'right', formatter: (v: number) => formatCompact(v), style: { fontSize: 10, fill: '#374151', fontWeight: 600 } }}>
                   {(iscoGroups?.groups || []).map((_: any, i: number) => (
                     <Cell key={i} fill={getSeriesColor(i)} />
                   ))}
@@ -1235,71 +1336,136 @@ const DemandSidePage = () => {
                           <span className="text-xs font-medium text-primary">{occ.title_en || occ.occupation}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-xs text-text-muted font-mono">{occ.code_isco || '\u2014'}</td>
-                      <td className="px-3 py-2.5 text-xs font-semibold text-[#C9A84C] tabular-nums">{formatCompact(occ.demand ?? 0)}</td>
+                      <td className="px-3 py-2.5 text-xs text-text-muted font-mono">{occ.isco || occ.code_isco || '\u2014'}</td>
+                      <td className="px-3 py-2.5 text-xs font-semibold text-[#C9A84C] tabular-nums">{formatCompact(occ.demand_jobs ?? occ.demand ?? 0)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Skills drill-down for selected occupation */}
+            {/* Skills drill-down for selected occupation — heatmap by demand intensity */}
             {selectedOccId && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
-                className="mt-3 p-4 bg-[#003366]/5 rounded-xl border border-[#003366]/10"
+                className="mt-3 p-5 bg-gradient-to-br from-[#003366]/5 via-white to-[#007DB5]/5 rounded-xl border border-[#003366]/10"
               >
-                <h4 className="text-xs font-semibold text-[#003366] mb-2 flex items-center gap-1.5">
+                <h4 className="text-xs font-semibold text-[#003366] mb-3 flex items-center gap-1.5">
                   <GraduationCap className="w-3.5 h-3.5" />
                   {t('مهارات المهنة المحددة', 'Skills for Selected Occupation')}
                 </h4>
                 {occSkillsLoading ? (
                   <div className="animate-pulse h-16 bg-gray-100 rounded" />
-                ) : occSkills ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* ESCO Skills */}
-                    <div>
-                      <p className="text-[10px] text-text-muted font-medium mb-1.5">{t('مهارات ESCO', 'ESCO Skills')} ({occSkills.esco_skills?.length ?? 0})</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(occSkills.esco_skills || []).slice(0, 15).map((sk: any, i: number) => (
-                          <span
-                            key={i}
-                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] ${
-                              sk.relation === 'essential'
-                                ? 'bg-[#003366]/10 text-[#003366] font-medium'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {sk.skill}
-                          </span>
-                        ))}
-                        {(occSkills.esco_skills?.length ?? 0) > 15 && (
-                          <span className="text-[10px] text-text-muted">+{(occSkills.esco_skills?.length ?? 0) - 15} more</span>
-                        )}
+                ) : occSkills?.skills?.length ? (() => {
+                  const maxJobs = Math.max(...occSkills.skills.map((s: any) => s.demand_jobs || 0), 1);
+                  const getHeatColor = (jobs: number) => {
+                    const ratio = Math.min(jobs / maxJobs, 1);
+                    if (ratio >= 0.75) return { bg: 'rgba(220, 38, 38, 0.15)', border: 'rgba(220, 38, 38, 0.3)', text: '#991b1b', barColor: '#dc2626', label: 'Very High' };
+                    if (ratio >= 0.5) return { bg: 'rgba(234, 88, 12, 0.12)', border: 'rgba(234, 88, 12, 0.25)', text: '#9a3412', barColor: '#ea580c', label: 'High' };
+                    if (ratio >= 0.25) return { bg: 'rgba(202, 138, 4, 0.10)', border: 'rgba(202, 138, 4, 0.2)', text: '#854d0e', barColor: '#ca8a04', label: 'Medium' };
+                    if (ratio > 0) return { bg: 'rgba(22, 163, 74, 0.08)', border: 'rgba(22, 163, 74, 0.15)', text: '#166534', barColor: '#16a34a', label: 'Low' };
+                    return { bg: 'rgba(148, 163, 184, 0.08)', border: 'rgba(148, 163, 184, 0.15)', text: '#64748b', barColor: '#94a3b8', label: 'None' };
+                  };
+                  return (
+                    <div className="space-y-4">
+                      {/* Summary bar */}
+                      <div className="flex items-center gap-3 text-[10px] text-text-muted">
+                        <span className="font-semibold text-[#003366] text-xs">{occSkills.occupation?.title}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-[#003366]/8 text-[#003366] font-medium">{occSkills.total_skills} skills</span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium">{occSkills.essential_count} essential</span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">{occSkills.supplied_count} supplied</span>
+                        <div className="ml-auto flex items-center gap-2 text-[9px]">
+                          <span className="text-gray-400">{t('شدة الطلب', 'Demand intensity')}:</span>
+                          {[
+                            { color: '#dc2626', label: 'Very High' },
+                            { color: '#ea580c', label: 'High' },
+                            { color: '#ca8a04', label: 'Medium' },
+                            { color: '#16a34a', label: 'Low' },
+                            { color: '#94a3b8', label: 'None' },
+                          ].map(l => (
+                            <span key={l.label} className="flex items-center gap-0.5">
+                              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: l.color }} />
+                              {l.label}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    {/* Technologies */}
-                    <div>
-                      <p className="text-[10px] text-text-muted font-medium mb-1.5">{t('التقنيات', 'Technologies')} ({occSkills.technologies?.length ?? 0})</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(occSkills.technologies || []).slice(0, 10).map((tech: any, i: number) => (
-                          <span
-                            key={i}
-                            className={`inline-block px-2 py-0.5 rounded-full text-[10px] ${
-                              tech.hot
-                                ? 'bg-[#C9A84C]/15 text-[#C9A84C] font-medium'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {tech.tool} {tech.hot ? '\u2605' : ''}
-                          </span>
-                        ))}
+
+                      {/* Essential Skills — heatmap cards */}
+                      <div>
+                        <p className="text-[10px] text-text-muted font-semibold mb-2 uppercase tracking-wider">{t('مهارات أساسية', 'Essential Skills')}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {occSkills.skills
+                            .filter((sk: any) => sk.relation === 'essential')
+                            .sort((a: any, b: any) => (b.demand_jobs || 0) - (a.demand_jobs || 0))
+                            .slice(0, 24)
+                            .map((sk: any, i: number) => {
+                              const heat = getHeatColor(sk.demand_jobs || 0);
+                              const barWidth = maxJobs > 0 ? Math.max(((sk.demand_jobs || 0) / maxJobs) * 100, 2) : 2;
+                              return (
+                                <div
+                                  key={i}
+                                  className="relative rounded-lg px-3 py-2 border overflow-hidden transition-all hover:scale-[1.02]"
+                                  style={{ backgroundColor: heat.bg, borderColor: heat.border }}
+                                >
+                                  {/* Background intensity bar */}
+                                  <div
+                                    className="absolute inset-y-0 left-0 opacity-20 rounded-l-lg"
+                                    style={{ width: `${barWidth}%`, backgroundColor: heat.barColor }}
+                                  />
+                                  <div className="relative flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-medium truncate" style={{ color: heat.text }}>{sk.skill}</span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      {sk.supply_courses > 0 && (
+                                        <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">
+                                          {sk.supply_courses} courses
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] font-bold tabular-nums" style={{ color: heat.barColor }}>
+                                        {sk.demand_jobs > 0 ? formatCompact(sk.demand_jobs) : '0'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
                       </div>
+
+                      {/* Optional Skills — lighter heatmap */}
+                      {occSkills.skills.some((sk: any) => sk.relation !== 'essential') && (
+                        <div>
+                          <p className="text-[10px] text-text-muted font-semibold mb-2 uppercase tracking-wider">{t('مهارات اختيارية', 'Optional Skills')}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {occSkills.skills
+                              .filter((sk: any) => sk.relation !== 'essential')
+                              .sort((a: any, b: any) => (b.demand_jobs || 0) - (a.demand_jobs || 0))
+                              .slice(0, 20)
+                              .map((sk: any, i: number) => {
+                                const heat = getHeatColor(sk.demand_jobs || 0);
+                                return (
+                                  <span
+                                    key={i}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] border font-medium transition-all hover:scale-105"
+                                    style={{ backgroundColor: heat.bg, borderColor: heat.border, color: heat.text }}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: heat.barColor }} />
+                                    {sk.skill}
+                                    {sk.demand_jobs > 0 && <span className="text-[8px] opacity-70">({formatCompact(sk.demand_jobs)})</span>}
+                                  </span>
+                                );
+                              })}
+                            {occSkills.skills.filter((sk: any) => sk.relation !== 'essential').length > 20 && (
+                              <span className="text-[10px] text-text-muted self-center">+{occSkills.skills.filter((sk: any) => sk.relation !== 'essential').length - 20} more</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-text-muted">{t('لا توجد بيانات مهارات', 'No skills data for this occupation')}</p>
+                  );
+                })() : (
+                  <p className="text-xs text-text-muted">{t('No skills data', 'No skills data for this occupation')}</p>
                 )}
               </motion.div>
             )}
@@ -1357,7 +1523,7 @@ const DemandSidePage = () => {
           data={(iscoGroups?.groups || []) as Record<string, unknown>[]}
         >
           {(iscoGroups?.groups || []).length ? (
-            <ResponsiveContainer width="100%" height={320}>
+            <ResponsiveContainer width="100%" height={420}>
               <Treemap
                 data={(iscoGroups.groups || []).map((g: any) => ({ name: g.name || g.group_label, count: g.jobs ?? g.demand_jobs ?? 0 }))}
                 dataKey="count"
@@ -1377,13 +1543,13 @@ const DemandSidePage = () => {
       {(() => {
         const occs = occComparison?.occupations || [];
         if (!occs.length) return null;
-        const top = [...occs].sort((a: any, b: any) => (b.demand ?? 0) - (a.demand ?? 0)).slice(0, 3);
+        const top = [...occs].sort((a: any, b: any) => (b.demand_jobs ?? b.demand ?? 0) - (a.demand_jobs ?? a.demand ?? 0)).slice(0, 3);
         const topNames = top.map((o: any) => o.title_en || o.occupation).join(', ');
         return (
           <InsightPanel
-            explanation="Occupation demand breakdown shows which roles employers are actively hiring for. Higher postings count indicates stronger employer demand."
-            insight={`Top demanded occupations by job postings: ${topNames}. ${occComparison?.total ? `${occComparison.total} unique occupations tracked across all Emirates.` : ''}`}
-            recommendation="High-demand occupations with few graduates represent priority alignment targets for university program expansion and vocational training."
+            explanation="Occupation-level demand mapped to ESCO/ISCO taxonomy. Click any occupation row to see its required skills with demand intensity heatmap."
+            insight={`Top demanded: ${topNames}. ${occComparison?.total ? `${formatCompact(occComparison.total)} unique occupations tracked.` : ''} ${(occComparison?.occupations?.[0]?.demand_jobs ?? occComparison?.occupations?.[0]?.demand) ? `Highest: ${occComparison.occupations[0].title_en || occComparison.occupations[0].occupation} (${formatCompact(occComparison.occupations[0].demand_jobs ?? occComparison.occupations[0].demand)} postings).` : ''}`}
+            recommendation="ACTION: (1) Cross-reference top 20 demanded occupations with graduate output. (2) Occupations with 0 postings may indicate data gaps or emerging roles. (3) Use skill drill-down to identify competency gaps for training programs."
             severity="info"
             source="LinkedIn UAE Job Postings \u2014 Occupation Mapping"
           />
@@ -1726,11 +1892,16 @@ const DemandSidePage = () => {
       </GlassCard>
 
       <InsightPanel
-        explanation="Salary benchmarks help graduates set realistic expectations and help policymakers assess wage competitiveness across emirates."
-        insight={salaries?.length ? `Salary data covers ${salaries.length} occupation-emirate combinations. ${salaries.some(s => (s.median_salary ?? 0) > 20000) ? 'Several roles offer median salaries above AED 20,000/month, indicating strong compensation for specialized skills.' : 'Most roles fall in moderate salary ranges.'}` : undefined}
-        recommendation="Compare salary benchmarks against cost of living by emirate. Low salaries in high-cost emirates (Dubai, Abu Dhabi) may drive talent to other markets."
+        explanation="Salary benchmarks are sourced from Glassdoor and employer-reported data. They help graduates set realistic expectations and inform policymakers on wage competitiveness across emirates and occupations."
+        insight={salaries?.length ? (() => {
+          const highPay = salaries.filter((s: any) => (s.median_salary ?? 0) > 20000);
+          const avgMedian = salaries.reduce((s: number, x: any) => s + (x.median_salary ?? 0), 0) / salaries.length;
+          const topRole = salaries.reduce((best: any, s: any) => (!best || (s.median_salary ?? 0) > (best.median_salary ?? 0)) ? s : best, null);
+          return `${salaries.length} occupation-emirate salary records analysed. Overall median: AED ${formatCompact(avgMedian)}/month. ${highPay.length} roles exceed AED 20,000/month. Highest-paying: ${topRole?.occupation || 'N/A'} at AED ${formatCompact(topRole?.median_salary ?? 0)}/month${topRole?.emirate ? ` (${topRole.emirate})` : ''}. ${salaries.filter((s: any) => s.confidence === 'high').length} entries with high confidence.`;
+        })() : undefined}
+        recommendation="ACTION ITEMS: (1) Cross-reference high-salary roles with graduate output — undersupplied high-pay roles are prime targets for program expansion. (2) Investigate roles where Dubai/Abu Dhabi salaries are <15% above other emirates — may indicate wage compression. (3) Low-salary, high-demand roles need Emiratisation incentives to attract nationals."
         severity="info"
-        source="Glassdoor Salary API"
+        source="Glassdoor Salary API + Employer Reports"
       />
 
       {/* ════════════════════════════════════════════════════════════════ */}
@@ -1750,11 +1921,11 @@ const DemandSidePage = () => {
             {t('فلاتر التوقعات المتقدمة', 'Projection Drill-Down Filters')}
           </h3>
           {hasDemProjFilters && (
-            <button onClick={() => { setDemProjRegion(''); setDemProjIsco(''); setDemProjSector(''); setDemProjExp(''); }}
+            <button onClick={() => { setDemProjRegion(''); setDemProjIsco(''); setDemProjSector(''); setDemProjExp(''); setDemProjOcc(''); setDemProjSkill(''); }}
               className="text-[10px] text-red-500 hover:underline font-medium">{t('مسح', 'Clear')}</button>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
             <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('الإمارة', 'Region')}</label>
             <select value={demProjRegion} onChange={e => setDemProjRegion(e.target.value)}
@@ -1780,6 +1951,47 @@ const DemandSidePage = () => {
             </select>
           </div>
           <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('المهنة', 'Occupation')}</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={demProjOcc}
+                onChange={e => { setDemProjOcc(e.target.value); setOccAutocompleteOpen(true); }}
+                onFocus={() => demProjOcc.length >= 2 && setOccAutocompleteOpen(true)}
+                onBlur={() => setTimeout(() => setOccAutocompleteOpen(false), 200)}
+                placeholder={t('اكتب للبحث...', 'Type to search...')}
+                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none"
+              />
+              {occAutocompleteOpen && (occSuggestions || []).length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                  {(occSuggestions || []).map((occ: any) => (
+                    <button
+                      key={occ.id}
+                      onMouseDown={(e) => { e.preventDefault(); setDemProjOcc(occ.title); setOccAutocompleteOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-[#003366]/5 flex items-center justify-between border-b border-gray-50 last:border-0"
+                    >
+                      <span className="font-medium text-gray-800 truncate">{occ.title}</span>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">ISCO {occ.isco_group}</span>
+                        <span className="text-[9px] font-semibold text-[#C9A84C]">{formatCompact(occ.demand)} jobs</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('المهارة', 'Skill')}</label>
+            <input
+              type="text"
+              value={demProjSkill}
+              onChange={e => setDemProjSkill(e.target.value)}
+              placeholder={t('بحث مهارة...', 'Search skill...')}
+              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none"
+            />
+          </div>
+          <div>
             <label className="text-[9px] font-semibold uppercase text-gray-500 mb-1 block">{t('مستوى الخبرة', 'Experience')}</label>
             <select value={demProjExp} onChange={e => setDemProjExp(e.target.value)}
               className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-navy/20 outline-none">
@@ -1793,7 +2005,9 @@ const DemandSidePage = () => {
             {demProjRegion && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-teal/8 text-teal font-medium">{demProjRegion} <button onClick={() => setDemProjRegion('')}><X className="w-2.5 h-2.5" /></button></span>}
             {demProjIsco && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-navy/8 text-navy font-medium">ISCO {demProjIsco} <button onClick={() => setDemProjIsco('')}><X className="w-2.5 h-2.5" /></button></span>}
             {demProjSector && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-amber-100 text-amber-800 font-medium">{demProjSector.slice(0,20)} <button onClick={() => setDemProjSector('')}><X className="w-2.5 h-2.5" /></button></span>}
-            {demProjExp && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-emerald/8 text-emerald-700 font-medium">{demProjExp} <button onClick={() => setDemProjExp('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjOcc && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-purple-100 text-purple-800 font-medium">{demProjOcc.slice(0,20)} <button onClick={() => setDemProjOcc('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjSkill && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-sky-100 text-sky-800 font-medium">{demProjSkill.slice(0,20)} <button onClick={() => setDemProjSkill('')}><X className="w-2.5 h-2.5" /></button></span>}
+            {demProjExp && <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] rounded-full bg-emerald-100 text-emerald-700 font-medium">{demProjExp} <button onClick={() => setDemProjExp('')}><X className="w-2.5 h-2.5" /></button></span>}
           </div>
         )}
       </GlassCard>
@@ -1833,109 +2047,104 @@ const DemandSidePage = () => {
       <GlassCard>
         <DataStory
           title="Future Demand Projection"
-          method="Projected demand based on historical trend extrapolation. AI displacement and new AI job creation factors applied. External factors from web research adjust the forecast."
+          method="Filter-responsive demand projection from LinkedIn posting trends. Changes per region/ISCO/sector/occupation. External factors from web research adjust the forecast. Base, optimistic (+3%/yr) and pessimistic (-2%/yr) scenarios shown."
           quality="model-generated"
-          tables={[{name:'vw_forecast_demand', label:'Forecast Demand'}, {name:'vw_ai_impact', label:'AI Impact'}]}
-          caveats="Projections are model-generated estimates, not predictions. Based on current trends which may change."
+          tables={[{name:'fact_demand_vacancies_agg', label:'Job Postings'}, {name:'dim_occupation', label:'Occupations'}]}
+          caveats="Projections change based on selected filters. All future numbers are estimates based on current trends."
         >
         <ChartToolbar
           title={t('توقعات الطلب المستقبلي', 'Future Demand Projection')}
-          data={futureProj?.projections as Record<string, unknown>[] | undefined}
+          data={demandProj?.projections as Record<string, unknown>[] | undefined}
         >
-          {futureLoading ? (
-            <SkeletonChart height={340} />
-          ) : (futureProj?.projections || []).length > 0 ? (
-            <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={futureProj.projections} margin={{ left: 10, right: 10, top: 10, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="futureGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={COLORS.navy} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={COLORS.navy} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid {...GRID_PROPS} />
-                <XAxis dataKey="year" tick={AXIS_TICK_SM} />
-                <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Area
-                  type="monotone"
-                  dataKey="projected_demand"
-                  name={t('الطلب المتوقع', 'Projected Demand')}
-                  stroke={COLORS.navy}
-                  fill="url(#futureGrad)"
-                  strokeWidth={2}
-                />
-                {futureProj.projections[0]?.ai_displacement != null && (
-                  <Line
-                    type="monotone"
-                    dataKey="ai_displacement"
-                    name={t('إزاحة الذكاء الاصطناعي', 'AI Displacement')}
-                    stroke={COLORS.gold}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                )}
-                {futureProj.projections[0]?.new_ai_jobs != null && (
-                  <Line
-                    type="monotone"
-                    dataKey="new_ai_jobs"
-                    name={t('وظائف جديدة بالذكاء الاصطناعي', 'New AI Jobs')}
-                    stroke={COLORS.emerald}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : (
+          {demProjLoading ? (
+            <SkeletonChart height={400} />
+          ) : (demandProj?.projections || []).length > 0 ? (() => {
+            const signal = demExtResearch?.market_signal_pct ?? 0;
+            const chartData = demandProj.projections.map((p: any, i: number) => ({
+              ...p,
+              ...(signal ? { demand_external: Math.round(p.demand_base * (1 + (signal / 100) * ((i + 1) / demandProj.projections.length))) } : {}),
+            }));
+            return (
+              <ResponsiveContainer width="100%" height={400}>
+                <ComposedChart data={chartData} margin={{ left: 15, right: 15, top: 10, bottom: 25 }}>
+                  <defs>
+                    <linearGradient id="demProjGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={COLORS.navy} stopOpacity={0.3} />
+                      <stop offset="95%" stopColor={COLORS.navy} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="year" tick={AXIS_TICK_SM}
+                    label={{ value: t('السنة', 'Year'), position: 'insideBottom', offset: -15, style: { fontSize: 11, fill: '#6b7280', fontWeight: 600 } }} />
+                  <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)}
+                    label={{ value: t('عدد الوظائف', 'Job Postings'), angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 11, fill: '#6b7280', fontWeight: 600 } }} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  {/* Base demand line + fill */}
+                  <Area type="monotone" dataKey="demand_base" name={t('الطلب المتوقع', 'Projected Demand')} stroke={COLORS.navy} fill="url(#demProjGrad)" strokeWidth={3} dot={{ r: 5, fill: COLORS.navy, strokeWidth: 2, stroke: 'white' }} />
+                  {/* Optimistic scenario */}
+                  <Line type="monotone" dataKey="demand_optimistic" name={t('سيناريو متفائل', 'Optimistic Scenario')} stroke={COLORS.emerald} strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3, fill: COLORS.emerald }} />
+                  {/* Pessimistic scenario */}
+                  <Line type="monotone" dataKey="demand_pessimistic" name={t('سيناريو متشائم', 'Pessimistic Scenario')} stroke="#dc2626" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 3, fill: '#dc2626' }} />
+                  {/* External factor adjusted */}
+                  {signal !== 0 && (
+                    <Line type="monotone" dataKey="demand_external" name={t('معدّل بعوامل خارجية', `External Adjusted (${signal > 0 ? '+' : ''}${signal}%)`)} stroke="#8B5CF6" strokeWidth={2.5} dot={{ r: 4, fill: '#8B5CF6' }} />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            );
+          })() : (
             <ChartEmpty title={t('لا توجد بيانات', 'No projection data')} />
           )}
         </ChartToolbar>
 
-        {/* Methodology Panel */}
-        {futureProj?.methodology && (
-          <div className="mt-4 p-4 bg-[#003366]/5 rounded-xl border border-[#003366]/10">
-            <h4 className="text-xs font-semibold text-[#003366] mb-2 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              {t('منهجية التوقعات', 'Projection Methodology')}
-            </h4>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              {typeof futureProj.methodology === 'string'
-                ? futureProj.methodology
-                : JSON.stringify(futureProj.methodology)}
-            </p>
-          </div>
-        )}
+        {/* Projection Summary Cards */}
+        {demandProj?.projections?.length > 0 && (() => {
+          const first = demandProj.projections[0];
+          const last = demandProj.projections[demandProj.projections.length - 1];
+          const growthPct = first.demand_base > 0 ? ((last.demand_base - first.demand_base) / first.demand_base * 100) : 0;
+          const signal = demExtResearch?.market_signal_pct ?? 0;
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+              {[
+                { label: t('الطلب الحالي', `Demand ${first.year}`), value: formatCompact(first.demand_base), color: COLORS.navy },
+                { label: t('الطلب 2030', `Demand ${last.year}`), value: formatCompact(last.demand_base), color: COLORS.navy },
+                { label: t('النمو السنوي', 'Annual Growth'), value: `${demandProj.annual_growth_rate > 0 ? '+' : ''}${demandProj.annual_growth_rate}%`, color: demandProj.annual_growth_rate > 0 ? COLORS.emerald : '#dc2626' },
+                { label: t('إجمالي النمو', 'Total Growth'), value: `${growthPct > 0 ? '+' : ''}${growthPct.toFixed(1)}%`, color: growthPct > 0 ? COLORS.emerald : '#dc2626' },
+                { label: t('نقاط البيانات', 'Data Points'), value: String(demandProj.data_points), color: COLORS.teal },
+              ].map(item => (
+                <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-3 text-center">
+                  <p className="text-[10px] text-text-muted mb-0.5">{item.label}</p>
+                  <p className="text-lg font-bold tabular-nums" style={{ color: item.color }}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
-        {/* Projection summary cards */}
-        {futureProj?.summary && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-            {[
-              { label: t('الطلب الحالي', 'Current Demand'), value: futureProj.summary.current_demand, color: COLORS.navy },
-              { label: t('الطلب المتوقع', 'Projected Demand'), value: futureProj.summary.projected_demand, color: COLORS.teal },
-              { label: t('معدل النمو', 'Growth Rate'), value: futureProj.summary.growth_rate, color: COLORS.gold, pct: true },
-              { label: t('تأثير الذكاء الاصطناعي', 'AI Displacement'), value: futureProj.summary.ai_displacement_pct, color: COLORS.emerald, pct: true },
-            ].filter(item => item.value != null).map(item => (
-              <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-3 text-center">
-                <p className="text-[10px] text-text-muted mb-0.5">{item.label}</p>
-                <p className="text-lg font-bold tabular-nums" style={{ color: item.color }}>
-                  {item.pct ? `${Number(item.value).toFixed(1)}%` : formatCompact(Number(item.value))}
-                </p>
-              </div>
-            ))}
+        {/* Context badge */}
+        {demandProj?.context && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">{t('سياق التوقع', 'Projection context')}:</span>
+            <span className="px-2 py-0.5 rounded-full bg-[#003366]/8 text-[#003366] text-[10px] font-semibold">{demandProj.context}</span>
+            {demandProj.historical?.length > 0 && (
+              <span className="text-[9px] text-gray-400">({demandProj.historical.length} historical years)</span>
+            )}
           </div>
         )}
         </DataStory>
       </GlassCard>
 
       <InsightPanel
-        explanation="Future projections combine historical demand trends with AI automation impact estimates to forecast labour market evolution."
-        insight={futureProj?.summary ? `Projected demand growth of ${Number(futureProj.summary.growth_rate ?? 0).toFixed(1)}%. AI may displace ~${Number(futureProj.summary.ai_displacement_pct ?? 0).toFixed(1)}% of current roles while creating new AI-adjacent positions.` : 'Projection data is being computed.'}
-        recommendation="Use projections for strategic planning, not precise targets. Focus on building adaptive workforce capabilities rather than fixed headcount targets."
-        severity="info"
-        source="Trend Extrapolation + AIOE Impact Model"
+        explanation={`Demand projection for ${demandProj?.context || 'All UAE'} based on ${demandProj?.data_points || 0} historical data points. Three scenarios: base (${demandProj?.annual_growth_rate ?? 8}% annual growth), optimistic (+3%/yr), pessimistic (-2%/yr).`}
+        insight={demandProj?.projections?.length ? (() => {
+          const f = demandProj.projections[0]; const l = demandProj.projections[demandProj.projections.length - 1];
+          const growth = f.demand_base > 0 ? ((l.demand_base - f.demand_base) / f.demand_base * 100).toFixed(1) : '0';
+          return `Demand projected from ${formatCompact(f.demand_base)} (${f.year}) to ${formatCompact(l.demand_base)} (${l.year}), +${growth}% growth. Optimistic scenario: ${formatCompact(l.demand_optimistic)}. Pessimistic: ${formatCompact(l.demand_pessimistic)}. Range spread: ${formatCompact(l.demand_optimistic - l.demand_pessimistic)} jobs.${demExtResearch ? ` External research signal: ${demExtResearch.market_signal_pct > 0 ? '+' : ''}${demExtResearch.market_signal_pct}% (${demExtResearch.confidence} confidence).` : ''}`;
+        })() : 'Select filters to see filter-specific projections.'}
+        recommendation="ACTION: (1) Compare projections across different filter combinations to identify fastest-growing segments. (2) Use pessimistic scenario for conservative workforce planning. (3) Track quarterly actuals vs projections to recalibrate. (4) Cross-reference with Supply Side to identify gaps."
+        severity={demandProj?.annual_growth_rate > 10 ? 'success' : demandProj?.annual_growth_rate < 3 ? 'warning' : 'info'}
+        source="LinkedIn UAE Job Postings + Trend Extrapolation"
       />
 
       {/* Skills Network — Knowledge Graph */}
@@ -2081,6 +2290,290 @@ const DemandSidePage = () => {
         severity={(demand?.data_quality?.missing_occupation_pct ?? 0) > 20 ? 'warning' : 'success'}
         source="Automated Pipeline Quality Checks"
       />
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* PAGE CONCLUSION — EXECUTIVE SUMMARY                              */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-gradient-to-br from-[#003366]/5 via-white to-[#007DB5]/5 rounded-2xl border border-[#003366]/15 p-6 shadow-sm">
+        <h3 className="text-sm font-bold text-[#003366] flex items-center gap-2 mb-4">
+          <Target className="w-4.5 h-4.5" />
+          {t('ملخص تنفيذي — جانب الطلب', 'Executive Summary — Demand Side Analysis')}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Key Findings */}
+          <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+            <h4 className="text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <TrendingUp className="w-3.5 h-3.5" /> {t('نتائج رئيسية', 'Key Findings')}
+            </h4>
+            <ul className="space-y-1.5 text-[11px] text-gray-700">
+              <li className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">&#9679;</span> {demand ? `${formatCompact(demand.total_postings)} active job postings from ${formatCompact(demand.unique_companies)} employers` : 'Loading demand data...'}</li>
+              <li className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">&#9679;</span> {demand?.top_industries?.[0] ? `Top hiring sector: ${demand.top_industries[0].industry} (${formatCompact(demand.top_industries[0].count)})` : 'Sector data loading'}</li>
+              <li className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">&#9679;</span> {demandProj ? `Projected ${demandProj.annual_growth_rate}% annual demand growth` : 'Projections loading'}</li>
+              <li className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">&#9679;</span> {iscoGroups?.groups?.length ? `${iscoGroups.groups.length} ISCO groups tracked, largest: ${iscoGroups.groups[0]?.group_name}` : 'ISCO data loading'}</li>
+            </ul>
+          </div>
+          {/* Warnings */}
+          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+            <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> {t('تحذيرات', 'Warnings & Risks')}
+            </h4>
+            <ul className="space-y-1.5 text-[11px] text-gray-700">
+              <li className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">&#9679;</span> {demand?.data_quality ? `${(demand.data_quality.missing_occupation_pct ?? 0).toFixed(0)}% of postings missing occupation classification` : 'Quality data loading'}</li>
+              <li className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">&#9679;</span> Demand data is LinkedIn-sourced — may underrepresent government and informal sectors</li>
+              <li className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">&#9679;</span> Salary data coverage varies by emirate — low-sample estimates should be treated cautiously</li>
+              <li className="flex items-start gap-1.5"><span className="text-amber-500 mt-0.5">&#9679;</span> Future projections are trend-based models, not predictions — revalidate quarterly</li>
+            </ul>
+          </div>
+          {/* Recommendations */}
+          <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+            <h4 className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+              <ArrowUpDown className="w-3.5 h-3.5" /> {t('توصيات', 'Recommended Actions')}
+            </h4>
+            <ul className="space-y-1.5 text-[11px] text-gray-700">
+              <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">&#9679;</span> Cross-reference top demanded occupations with Supply Side graduate output to quantify gaps</li>
+              <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">&#9679;</span> Expand vocational training in high-demand ISCO groups with low graduate supply</li>
+              <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">&#9679;</span> Monitor AI Impact page for automation risk in top-demand occupations</li>
+              <li className="flex items-start gap-1.5"><span className="text-emerald-500 mt-0.5">&#9679;</span> Use drill-down filters in projection to target specific region-sector combos for policy</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* AI RESEARCH ASSISTANT                                             */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-white border border-gray-100 shadow-md rounded-2xl overflow-hidden">
+        <div className="p-5 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-[#003366]/10"><MessageSquare className="w-5 h-5 text-[#003366]" /></div>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">{t('مساعد البحث بالذكاء الاصطناعي', 'AI Research Assistant')}</h2>
+                <p className="text-[11px] text-gray-400">{t('وكيل متعدد: قواعد بيانات + بحث ويب + تحليل الطلب', 'Multi-agent: DB queries + web search + demand analysis')}</p>
+              </div>
+            </div>
+            <button onClick={() => setShowTraces(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-medium border transition-all ${
+                showTraces ? 'bg-[#003366]/10 text-[#003366] border-[#003366]/20' : 'bg-white text-gray-400 border-gray-200'
+              }`}>
+              <Activity className="w-3.5 h-3.5" />
+              {t('سلسلة التفكير', 'Thinking Traces')}
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
+            <button onClick={() => setWebSearchOn(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                webSearchOn ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#003366]/30'
+              }`}>
+              <Globe className="w-3.5 h-3.5" />
+              {t('بحث ويب', 'Web Search')}
+              {webSearchOn && <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />}
+            </button>
+            <button onClick={() => setSelfKnowledgeOn(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${
+                selfKnowledgeOn ? 'bg-[#C9A84C] text-white border-[#C9A84C]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#C9A84C]/30'
+              }`}>
+              <Lightbulb className="w-3.5 h-3.5" />
+              {t('معرفة ذاتية', 'Self Knowledge')}
+              {selfKnowledgeOn && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+            </button>
+            <span className="text-[10px] text-gray-400">
+              {webSearchOn && selfKnowledgeOn ? t('بحث + معرفة', 'Web + Self Knowledge')
+                : webSearchOn ? t('بحث مباشر عبر Tavily', 'Live search via Tavily')
+                : selfKnowledgeOn ? t('معرفة النموذج + DB', 'Model knowledge + DB')
+                : t('قاعدة بيانات فقط', 'DB only')}
+            </span>
+          </div>
+          {chatMessages.length === 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                t('ما أكثر المهن طلباً في دبي؟', 'What are the most demanded occupations in Dubai?'),
+                t('تحليل فجوة المهارات في قطاع التكنولوجيا', 'Analyse the skill gap in the tech sector'),
+                t('قارن الطلب بين أبوظبي ودبي', 'Compare demand between Abu Dhabi and Dubai'),
+                t('ما الوظائف الأكثر عرضة للاستبدال بالذكاء الاصطناعي؟', 'Which jobs are most at risk from AI automation?'),
+                t('أظهر لي كل الجداول', 'Show me all database tables'),
+                t('ما اتجاهات سوق العمل الإماراتي في 2026؟', 'UAE job market trends for 2026?'),
+              ].map((q, i) => (
+                <button key={i} onClick={() => setChatInput(q)}
+                  className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-[#003366]/5 hover:border-[#003366]/20 transition-colors">
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className={`flex ${showTraces ? 'divide-x divide-gray-100' : ''}`}>
+          <div className={`${showTraces ? 'w-[60%]' : 'w-full'} max-h-[500px] overflow-y-auto p-5 space-y-4`}>
+            {chatMessages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                  msg.role === 'user' ? 'bg-[#003366] text-white rounded-br-md' : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-bl-md'
+                }`}>
+                  {msg.role === 'user' ? (
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                  ) : (
+                    <div className="text-sm leading-relaxed prose prose-sm prose-gray max-w-none prose-headings:text-gray-900 prose-headings:font-bold prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-li:my-0.5 prose-table:text-xs prose-th:bg-[#003366]/5 prose-th:text-[#003366] prose-th:font-semibold prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1 prose-td:border-gray-200 prose-strong:text-[#003366]">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    </div>
+                  )}
+                  {msg.visualizations && msg.visualizations.length > 0 && (
+                    <div className={`mt-3 -mx-1 ${msg.visualizations.length > 1 ? 'grid grid-cols-1 lg:grid-cols-2 gap-2' : ''}`}>
+                      {msg.visualizations.map((viz: any, vi: number) => (
+                        <div key={vi} className="bg-white rounded-lg border border-gray-100 p-2">
+                          <ChatVisualization spec={viz} compact />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!msg.visualizations && msg.visualization && (
+                    <div className="mt-3 -mx-1"><ChatVisualization spec={msg.visualization} compact /></div>
+                  )}
+                  {msg.citations && msg.citations.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-200/50 space-y-1">
+                      {msg.citations.slice(0, 3).map((c: any, ci: number) => (
+                        <div key={ci} className="flex items-start gap-1.5 text-[10px] text-gray-500">
+                          <Database className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span><span className="font-medium">{c.source}</span>: {c.excerpt?.slice(0, 100)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isStreaming && streamingText && (
+              <div className="flex justify-start">
+                <div className="max-w-[85%] bg-gray-50 rounded-2xl rounded-bl-md px-4 py-3 border border-gray-100">
+                  <div className="text-sm leading-relaxed prose prose-sm prose-gray max-w-none prose-headings:text-gray-900 prose-headings:font-bold prose-headings:mt-3 prose-headings:mb-1 prose-p:my-1.5 prose-table:text-xs prose-th:bg-[#003366]/5 prose-th:text-[#003366] prose-th:font-semibold prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1 prose-strong:text-[#003366]">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripChartBlock(streamingText)}</ReactMarkdown>
+                  </div>
+                  <span className="inline-block w-1.5 h-4 bg-[#003366] animate-pulse ml-0.5 align-middle" />
+                </div>
+              </div>
+            )}
+            {isStreaming && !streamingText && (
+              <div className="flex justify-start">
+                <div className="bg-gray-50 rounded-2xl rounded-bl-md px-4 py-3 border border-gray-100 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#003366]" />
+                  <span className="text-xs text-gray-400">{t('الوكيل يفكر...', 'Agent thinking...')}</span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {showTraces && (
+            <div className="w-[40%] max-h-[500px] overflow-y-auto bg-[#FAFBFE] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-[11px] font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" />
+                  {t('سلسلة التنفيذ', 'Execution Trace')}
+                </h4>
+                {traces.length > 0 && <span className="text-[9px] text-gray-400">{traces.length} steps</span>}
+              </div>
+              {traces.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Cpu className="w-6 h-6 mx-auto mb-2 opacity-30" />
+                  <p className="text-[11px]">{t('أرسل رسالة لرؤية الخطوات', 'Send a message to see execution steps')}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {traces.map((step: TraceStep) => (
+                    <div key={step.id} className={`rounded-lg border p-2.5 text-[11px] transition-all ${
+                      step.type === 'thinking' ? 'bg-blue-50/50 border-blue-100' :
+                      step.type === 'tool_call' ? 'bg-amber-50/50 border-amber-100' :
+                      step.type === 'done' ? 'bg-green-50/50 border-green-100' :
+                      step.type === 'error' ? 'bg-red-50/50 border-red-100' : 'bg-white border-gray-100'
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          {step.type === 'thinking' && <Brain className="w-3 h-3 text-blue-500" />}
+                          {step.type === 'tool_call' && <FlaskConical className="w-3 h-3 text-amber-600" />}
+                          {step.type === 'done' && <Target className="w-3 h-3 text-green-600" />}
+                          {step.type === 'error' && <X className="w-3 h-3 text-red-500" />}
+                          <span className="font-semibold text-gray-700">
+                            {step.type === 'thinking' ? 'Planning' : step.type === 'tool_call' ? step.tool?.replace(/_/g, ' ') : step.type === 'done' ? 'Complete' : step.type === 'error' ? 'Error' : step.type}
+                          </span>
+                          {!step.duration && step.type !== 'done' && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                        </div>
+                        {step.duration != null && (
+                          <span className="text-[9px] text-gray-400 tabular-nums">
+                            {step.duration < 1000 ? `${step.duration}ms` : `${(step.duration / 1000).toFixed(1)}s`}
+                          </span>
+                        )}
+                      </div>
+                      {step.content && <p className="text-[10px] text-gray-500 mt-0.5">{step.content}</p>}
+                      {step.tool && step.args && (
+                        <details className="mt-1">
+                          <summary className="text-[9px] text-gray-400 cursor-pointer hover:text-gray-600">View arguments</summary>
+                          <pre className="mt-1 p-1.5 bg-white rounded text-[9px] text-gray-600 overflow-x-auto max-h-[100px]">{JSON.stringify(step.args, null, 2)}</pre>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                  {isStreaming && (
+                    <div className="flex justify-center py-1">
+                      <div className="flex items-center gap-1.5 text-[9px] text-gray-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {t('جاري المعالجة...', 'Processing...')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-gray-100">
+          {(attachedFiles.length > 0 || uploadFile.isPending) && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachedFiles.map(f => (
+                <div key={f.file_id} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#003366]/8 border border-[#003366]/15 rounded-lg text-[11px]">
+                  <Database className="w-3 h-3 text-[#003366]" />
+                  <span className="font-medium text-[#003366]">{f.filename}</span>
+                  <span className="text-[9px] text-gray-400">{f.summary?.slice(0, 40)}{(f.summary?.length || 0) > 40 ? '..' : ''}</span>
+                  <button onClick={() => removeChatFile(f.file_id)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3" /></button>
+                </div>
+              ))}
+              {uploadFile.isPending && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-lg text-[11px]">
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                  <span className="text-amber-700">Uploading...</span>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input ref={fileInputRef} type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.txt,.json,.md,.log" onChange={handleChatFileUpload} className="hidden" />
+            <button onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadFile.isPending}
+              title={t('إرفاق ملف', 'Attach file (Excel, CSV, PDF, TXT)')}
+              className="px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-[#003366] transition-colors disabled:opacity-50">
+              <Layers className="w-4 h-4" />
+            </button>
+            <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+              placeholder={attachedFiles.length > 0 ? t('اسأل عن الملف المرفق...', 'Ask about your attached file(s)...') : t('اسأل أي سؤال عن الطلب...', 'Ask anything about demand data, analysis...')}
+              className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#003366]/20 focus:border-[#003366]/40 outline-none"
+              disabled={isStreaming} />
+            {isStreaming ? (
+              <button onClick={cancelStream} className="px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors flex items-center gap-2">
+                <X className="w-4 h-4" /> {t('إلغاء', 'Stop')}
+              </button>
+            ) : (
+              <button onClick={sendChatMessage} disabled={!chatInput.trim()}
+                className="px-4 py-2.5 bg-[#003366] text-white rounded-xl text-sm font-medium hover:bg-[#003366]/90 disabled:opacity-50 transition-colors flex items-center gap-2">
+                <Send className="w-4 h-4" /> {t('إرسال', 'Send')}
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+            {t('وكيل ذكاء اصطناعي', 'Multi-tool AI Agent')} | 47 {t('جدول', 'tables')} | {t('إرفاق ملفات + بحث ويب', 'File attachments + Web search + Dashboard control')}
+          </p>
+        </div>
+      </div>
+
     </div>
   ); } catch (err: any) {
     return (

@@ -1,6 +1,7 @@
 """AI impact analysis endpoints."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text as sql_text
 
 from src.dependencies import get_db, get_cache
 from src.middleware.auth import get_current_user
@@ -139,3 +140,127 @@ async def get_ai_taxonomy(user=Depends(get_current_user)):
         return {"taxonomy": [], "summary": {}}
     with open(fp) as f:
         return json.load(f)
+
+
+@router.get("/occupation-exposure")
+async def occupation_ai_exposure(
+    search: str | None = Query(None, description="Search occupation name"),
+    isco_group: str | None = Query(None, description="Filter by ISCO major group (1-9)"),
+    risk_level: str | None = Query(None, description="Filter: low, medium, high, critical"),
+    sort: str = Query("exposure", description="Sort by: exposure, automation, llm, name"),
+    order: str = Query("desc"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=5, le=50),
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Paginated occupation-level AI exposure with filters and search.
+
+    Returns every occupation with its AI exposure score, automation probability,
+    LLM exposure, risk level, and ISCO classification.
+    """
+    where_parts = ["ai.exposure_0_100 IS NOT NULL"]
+    params: dict = {"lim": limit, "offset": (page - 1) * limit}
+
+    if search:
+        where_parts.append("o.title_en ILIKE :q")
+        params["q"] = f"%{search}%"
+    if isco_group:
+        where_parts.append("o.isco_major_group = :isco")
+        params["isco"] = isco_group
+    if risk_level:
+        risk_map = {
+            "critical": "ai.exposure_0_100 >= 75",
+            "high": "ai.exposure_0_100 >= 50 AND ai.exposure_0_100 < 75",
+            "medium": "ai.exposure_0_100 >= 25 AND ai.exposure_0_100 < 50",
+            "low": "ai.exposure_0_100 < 25",
+        }
+        if risk_level in risk_map:
+            where_parts.append(risk_map[risk_level])
+
+    where_sql = " AND ".join(where_parts)
+
+    sort_map = {
+        "exposure": "avg_exposure",
+        "automation": "avg_automation",
+        "llm": "avg_llm",
+        "name": "o.title_en",
+    }
+    safe_sort = sort_map.get(sort, "avg_exposure")
+    safe_order = "ASC" if order.upper() == "ASC" else "DESC"
+
+    rows = (await db.execute(sql_text(f"""
+        SELECT o.occupation_id, o.title_en, o.code_isco, o.isco_major_group,
+               ROUND(AVG(ai.exposure_0_100)::numeric, 1) as avg_exposure,
+               ROUND(AVG(ai.automation_probability)::numeric, 3) as avg_automation,
+               ROUND(AVG(ai.llm_exposure)::numeric, 3) as avg_llm,
+               ai.source,
+               COUNT(DISTINCT ai.id) as score_count
+        FROM fact_ai_exposure_occupation ai
+        JOIN dim_occupation o ON ai.occupation_id = o.occupation_id
+        WHERE {where_sql}
+        GROUP BY o.occupation_id, o.title_en, o.code_isco, o.isco_major_group, ai.source
+        ORDER BY {safe_sort} {safe_order} NULLS LAST
+        LIMIT :lim OFFSET :offset
+    """), params)).fetchall()
+
+    # Total count
+    total = (await db.execute(sql_text(f"""
+        SELECT COUNT(DISTINCT o.occupation_id)
+        FROM fact_ai_exposure_occupation ai
+        JOIN dim_occupation o ON ai.occupation_id = o.occupation_id
+        WHERE {where_sql}
+    """), {k: v for k, v in params.items() if k not in ('lim', 'offset')})).scalar() or 0
+
+    # Summary stats
+    stats = (await db.execute(sql_text("""
+        SELECT ROUND(AVG(exposure_0_100)::numeric, 1),
+               ROUND(AVG(automation_probability)::numeric, 3),
+               COUNT(*) FILTER (WHERE exposure_0_100 >= 75),
+               COUNT(*) FILTER (WHERE exposure_0_100 >= 50 AND exposure_0_100 < 75),
+               COUNT(*) FILTER (WHERE exposure_0_100 >= 25 AND exposure_0_100 < 50),
+               COUNT(*) FILTER (WHERE exposure_0_100 < 25)
+        FROM fact_ai_exposure_occupation
+        WHERE exposure_0_100 IS NOT NULL
+    """))).fetchone()
+
+    def risk_label(exp: float) -> str:
+        if exp >= 75: return "critical"
+        if exp >= 50: return "high"
+        if exp >= 25: return "medium"
+        return "low"
+
+    ISCO_NAMES = {
+        '1': 'Managers', '2': 'Professionals', '3': 'Technicians',
+        '4': 'Clerical', '5': 'Service & Sales', '6': 'Agriculture',
+        '7': 'Craft & Trade', '8': 'Machine Operators', '9': 'Elementary',
+    }
+
+    return {
+        "occupations": [
+            {
+                "occupation_id": r[0],
+                "title": r[1],
+                "code_isco": r[2],
+                "isco_group": r[3],
+                "isco_group_name": ISCO_NAMES.get(r[3], f"Group {r[3]}"),
+                "exposure_score": float(r[4] or 0),
+                "automation_probability": float(r[5] or 0),
+                "llm_exposure": float(r[6] or 0),
+                "source": r[7],
+                "risk_level": risk_label(float(r[4] or 0)),
+            }
+            for r in rows
+        ],
+        "total": total,
+        "page": page,
+        "total_pages": (total + limit - 1) // limit if limit > 0 else 0,
+        "summary": {
+            "avg_exposure": float(stats[0] or 0) if stats else 0,
+            "avg_automation": float(stats[1] or 0) if stats else 0,
+            "critical_count": int(stats[2] or 0) if stats else 0,
+            "high_count": int(stats[3] or 0) if stats else 0,
+            "medium_count": int(stats[4] or 0) if stats else 0,
+            "low_count": int(stats[5] or 0) if stats else 0,
+        },
+    }

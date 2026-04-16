@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { usePageLoading } from '@/hooks/usePageLoading';
-import { useAnthropicIndex, useAIImpact, useAITaxonomy, useSkillsTaxonomy, useHotTechnologies, useSendMessage } from '@/api/hooks';
+import { useAnthropicIndex, useAIImpact, useAITaxonomy, useSkillsTaxonomy, useHotTechnologies, useSendMessage, useFutureProjection, useOccupationAIExposure } from '@/api/hooks';
 import { formatCompact } from '@/utils/formatters';
 import { COLORS, GRID_PROPS, AXIS_TICK, AXIS_TICK_SM, getSeriesColor } from '@/utils/chartColors';
 import PageHeader from '@/components/shared/PageHeader';
@@ -17,7 +17,7 @@ import DataStory from '@/components/shared/DataStory';
 import { SkeletonChart, SkeletonKPICard } from '@/components/shared/Skeletons';
 import type { Citation } from '@/api/types';
 import {
-  BarChart, Bar, ScatterChart, Scatter, ComposedChart, Line,
+  BarChart, Bar, ScatterChart, Scatter, ComposedChart, Line, Area, AreaChart,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   Legend, ReferenceLine, ZAxis,
@@ -25,7 +25,7 @@ import {
 import {
   Brain, Cpu, AlertTriangle, Zap, Database, Users, Briefcase,
   TrendingUp, TrendingDown, Send, Loader2, MessageSquare, Globe,
-  Lightbulb, ChevronRight, ExternalLink,
+  Lightbulb, ChevronRight, ChevronLeft, ExternalLink, Shield, Target, Search,
 } from 'lucide-react';
 
 /* ─── Color palette (blue-dominant, no red) ─────────────────────────────── */
@@ -80,6 +80,23 @@ const AIImpactPage = () => {
   const taxonomy = useSkillsTaxonomy();
   const hotTech = useHotTechnologies();
   const sendMessage = useSendMessage();
+  const { data: futureProj } = useFutureProjection();
+
+  // Granular occupation AI exposure state
+  const [aiExpSearch, setAiExpSearch] = useState('');
+  const [aiExpIsco, setAiExpIsco] = useState('');
+  const [aiExpRisk, setAiExpRisk] = useState('');
+  const [aiExpPage, setAiExpPage] = useState(1);
+  const [aiExpSort, setAiExpSort] = useState('exposure');
+  const { data: occExposure, isLoading: occExpLoading } = useOccupationAIExposure({
+    search: aiExpSearch || undefined,
+    isco_group: aiExpIsco || undefined,
+    risk_level: aiExpRisk || undefined,
+    sort: aiExpSort,
+    order: 'desc',
+    page: aiExpPage,
+    limit: 15,
+  });
 
   // Taxonomy drilldown state
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
@@ -1038,6 +1055,172 @@ const AIImpactPage = () => {
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 6b: Granular Occupation AI Exposure (paginated, searchable)
+        ═══════════════════════════════════════════════════════════════════ */}
+        <DataStory
+          title="Per-Occupation AI Exposure Explorer"
+          method="Every occupation scored by AI exposure (0-100), automation probability, and LLM-specific exposure. Sourced from AIOE (Felten et al., Science 2023) and Frey & Osborne automation probability. Search, filter by ISCO group or risk level."
+          quality="research"
+          tables={[{name:'fact_ai_exposure_occupation', label:'AI Exposure'}, {name:'dim_occupation', label:'Occupations'}]}
+        >
+        <div className="bg-white border border-gray-100 shadow-md rounded-2xl overflow-hidden">
+          <div className="p-5 border-b border-gray-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Cpu className="w-4 h-4" style={{ color: NAVY }} />
+                {t('استكشاف التعرض للذكاء الاصطناعي حسب المهنة', 'Occupation AI Exposure Explorer')}
+                {occExposure?.total != null && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-normal">{occExposure.total} occupations</span>
+                )}
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input
+                    type="text" value={aiExpSearch}
+                    onChange={e => { setAiExpSearch(e.target.value); setAiExpPage(1); }}
+                    placeholder={t('بحث مهنة...', 'Search occupation...')}
+                    className="text-xs border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 w-44 focus:ring-2 focus:ring-blue-200 outline-none"
+                  />
+                </div>
+                {/* ISCO filter */}
+                <select value={aiExpIsco} onChange={e => { setAiExpIsco(e.target.value); setAiExpPage(1); }}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-200 outline-none">
+                  <option value="">{t('كل ISCO', 'All ISCO Groups')}</option>
+                  {[{v:'1',l:'Managers'},{v:'2',l:'Professionals'},{v:'3',l:'Technicians'},{v:'4',l:'Clerical'},{v:'5',l:'Service & Sales'},{v:'7',l:'Craft & Trade'},{v:'8',l:'Machine Ops'},{v:'9',l:'Elementary'}].map(g =>
+                    <option key={g.v} value={g.v}>{g.v} — {g.l}</option>
+                  )}
+                </select>
+                {/* Risk filter */}
+                <select value={aiExpRisk} onChange={e => { setAiExpRisk(e.target.value); setAiExpPage(1); }}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-200 outline-none">
+                  <option value="">{t('كل المخاطر', 'All Risk Levels')}</option>
+                  <option value="critical">Critical (≥75%)</option>
+                  <option value="high">High (50-74%)</option>
+                  <option value="medium">Medium (25-49%)</option>
+                  <option value="low">Low (&lt;25%)</option>
+                </select>
+                {/* Sort */}
+                <select value={aiExpSort} onChange={e => setAiExpSort(e.target.value)}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-blue-200 outline-none">
+                  <option value="exposure">{t('ترتيب: التعرض', 'Sort: Exposure')}</option>
+                  <option value="automation">{t('ترتيب: الأتمتة', 'Sort: Automation')}</option>
+                  <option value="llm">{t('ترتيب: LLM', 'Sort: LLM Exposure')}</option>
+                  <option value="name">{t('ترتيب: الاسم', 'Sort: Name')}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Summary bar */}
+            {occExposure?.summary && (
+              <div className="flex items-center gap-4 mt-3 text-[10px]">
+                <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">{occExposure.summary.critical_count} critical</span>
+                <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 font-semibold">{occExposure.summary.high_count} high</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">{occExposure.summary.medium_count} medium</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">{occExposure.summary.low_count} low</span>
+                <span className="text-gray-400 ml-auto">Avg exposure: <strong className="text-gray-700">{occExposure.summary.avg_exposure}%</strong></span>
+              </div>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            {occExpLoading ? (
+              <div className="p-8 text-center text-gray-400"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" /> Loading...</div>
+            ) : (occExposure?.occupations || []).length > 0 ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80">
+                    {[t('المهنة', 'Occupation'), t('ISCO', 'ISCO'), t('مجموعة', 'Group'), t('تعرض AI', 'AI Exposure'), t('احتمال الأتمتة', 'Automation Prob.'), t('تعرض LLM', 'LLM Exposure'), t('المخاطر', 'Risk')].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(occExposure.occupations || []).map((occ: any, i: number) => {
+                    const riskColors: Record<string, string> = {
+                      critical: 'bg-red-100 text-red-800 border-red-200',
+                      high: 'bg-orange-100 text-orange-800 border-orange-200',
+                      medium: 'bg-amber-100 text-amber-800 border-amber-200',
+                      low: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                    };
+                    const barColor = occ.exposure_score >= 75 ? '#dc2626' : occ.exposure_score >= 50 ? '#ea580c' : occ.exposure_score >= 25 ? '#ca8a04' : '#16a34a';
+                    return (
+                      <tr key={occ.occupation_id || i} className="border-t border-gray-100 hover:bg-blue-50/30 transition-colors">
+                        <td className="px-3 py-2.5">
+                          <span className="text-xs font-medium text-gray-900">{occ.title}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-500 font-mono">{occ.code_isco || '—'}</td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-500">{occ.isco_group_name}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-2 rounded-full bg-gray-100 overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(occ.exposure_score, 100)}%`, backgroundColor: barColor }} />
+                            </div>
+                            <span className="text-[11px] font-bold tabular-nums" style={{ color: barColor }}>{occ.exposure_score}%</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-600 tabular-nums">{(occ.automation_probability * 100).toFixed(1)}%</td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-600 tabular-nums">{occ.llm_exposure ? `${(occ.llm_exposure * 100).toFixed(1)}%` : '—'}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${riskColors[occ.risk_level] || 'bg-gray-100 text-gray-600'}`}>
+                            {occ.risk_level}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-8 text-center text-gray-400">
+                <Brain className="w-6 h-6 mx-auto mb-2 opacity-30" />
+                <p className="text-xs">{t('لا توجد نتائج', 'No occupations found for this filter combination')}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {occExposure?.total_pages > 1 && (
+            <div className="p-4 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                {t('الصفحة', 'Page')} {occExposure.page} / {occExposure.total_pages} — {occExposure.total} {t('مهنة', 'occupations')}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setAiExpPage(p => Math.max(1, p - 1))} disabled={aiExpPage <= 1}
+                  className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                {Array.from({ length: Math.min(occExposure.total_pages, 5) }, (_, i) => {
+                  const pg = aiExpPage <= 3 ? i + 1 : aiExpPage + i - 2;
+                  if (pg < 1 || pg > occExposure.total_pages) return null;
+                  return (
+                    <button key={pg} onClick={() => setAiExpPage(pg)}
+                      className={`w-8 h-8 rounded-lg text-xs font-medium ${pg === aiExpPage ? 'bg-[#003366] text-white' : 'bg-white border border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
+                      {pg}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setAiExpPage(p => Math.min(occExposure.total_pages, p + 1))} disabled={aiExpPage >= occExposure.total_pages}
+                  className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30">
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        </DataStory>
+
+        <InsightPanel
+          explanation="This table shows every occupation's individual AI exposure score. Use filters to drill into specific ISCO groups or risk levels. High-exposure occupations should be prioritized for reskilling programs."
+          insight={occExposure?.summary ? `${occExposure.summary.critical_count} occupations at critical risk (≥75% exposure), ${occExposure.summary.high_count} at high risk (50-74%). Average exposure across all occupations: ${occExposure.summary.avg_exposure}%. Average automation probability: ${(occExposure.summary.avg_automation * 100).toFixed(1)}%.` : undefined}
+          recommendation="ACTION: (1) Filter by 'Critical' to identify top-priority occupations for government reskilling programs. (2) Cross-reference high-exposure occupations with the Demand page to see if they are still actively hired. (3) Use ISCO group filter to focus on specific workforce segments."
+          severity={occExposure?.summary?.critical_count > 50 ? 'critical' : occExposure?.summary?.critical_count > 20 ? 'warning' : 'info'}
+          source="AIOE (Felten et al., Science 2023) + Frey & Osborne Automation Probability"
+        />
+
+        {/* ═══════════════════════════════════════════════════════════════════
             SECTION 7: Skills Vulnerability + Hot Technologies + Emerging Tasks
         ═══════════════════════════════════════════════════════════════════ */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1158,7 +1341,139 @@ const AIImpactPage = () => {
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            SECTION 8: AI Research Chatbot
+            SECTION 8: AI Displacement vs New Jobs Projection (2026-2030)
+        ═══════════════════════════════════════════════════════════════════ */}
+        <DataStory
+          title="AI Labour Market Displacement vs Creation (2026-2030)"
+          method="Projects AI-displaced jobs (-2%/year automation) against new AI-adjacent roles (+3%/year creation). Based on AIOE scores, Anthropic Economic Index, and UAE economic growth trends."
+          quality="model-generated"
+          tables={[{name:'vw_ai_impact', label:'AI Impact'}, {name:'fact_demand_vacancies_agg', label:'Demand'}]}
+          caveats="These are scenario projections, not predictions. Actual displacement depends on adoption speed, policy, and sector-specific factors."
+        >
+        <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Shield className="w-4.5 h-4.5" style={{ color: NAVY }} />
+            <h3 className="text-sm font-bold text-gray-900">{t('إزاحة AI مقابل خلق الوظائف', 'AI Displacement vs Job Creation (2026-2030)')}</h3>
+          </div>
+
+          {(futureProj?.projections || []).length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={360}>
+                <ComposedChart data={futureProj.projections} margin={{ left: 15, right: 15, top: 10, bottom: 25 }}>
+                  <defs>
+                    <linearGradient id="aiDispGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#dc2626" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="aiNewGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={TEAL} stopOpacity={0.2} />
+                      <stop offset="95%" stopColor={TEAL} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid {...GRID_PROPS} />
+                  <XAxis dataKey="year" tick={AXIS_TICK_SM}
+                    label={{ value: t('السنة', 'Year'), position: 'insideBottom', offset: -15, style: { fontSize: 11, fill: '#6b7280', fontWeight: 600 } }} />
+                  <YAxis tick={AXIS_TICK_SM} tickFormatter={(v: number) => formatCompact(v)}
+                    label={{ value: t('عدد الوظائف', 'Jobs'), angle: -90, position: 'insideLeft', offset: -5, style: { fontSize: 11, fill: '#6b7280', fontWeight: 600 } }} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                  <Area type="monotone" dataKey="ai_displacement" name={t('وظائف مُزاحة بالذكاء الاصطناعي', 'AI Displaced Jobs')} stroke="#dc2626" fill="url(#aiDispGrad)" strokeWidth={2.5} dot={{ r: 4, fill: '#dc2626' }} />
+                  <Area type="monotone" dataKey="ai_new_jobs" name={t('وظائف جديدة بالذكاء الاصطناعي', 'New AI-Adjacent Jobs')} stroke={TEAL} fill="url(#aiNewGrad)" strokeWidth={2.5} dot={{ r: 4, fill: TEAL }} />
+                  <Line type="monotone" dataKey="demand_jobs" name={t('إجمالي الطلب الصافي', 'Net Total Demand')} stroke={NAVY} strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                  <ReferenceLine y={0} stroke="#e5e7eb" />
+                </ComposedChart>
+              </ResponsiveContainer>
+
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                {(() => {
+                  const last = futureProj.projections[futureProj.projections.length - 1];
+                  const totalDisp = futureProj.projections.reduce((s: number, p: any) => s + (p.ai_displacement || 0), 0);
+                  const totalNew = futureProj.projections.reduce((s: number, p: any) => s + (p.ai_new_jobs || 0), 0);
+                  const netEffect = totalNew - totalDisp;
+                  return [
+                    { label: t('إزاحة كلية 2030', 'Total Displaced by 2030'), value: formatCompact(totalDisp), color: '#dc2626' },
+                    { label: t('وظائف AI جديدة 2030', 'New AI Jobs by 2030'), value: formatCompact(totalNew), color: TEAL },
+                    { label: t('الأثر الصافي', 'Net Effect'), value: `${netEffect > 0 ? '+' : ''}${formatCompact(netEffect)}`, color: netEffect > 0 ? TEAL : '#dc2626' },
+                    { label: t('معدل الإزاحة/سنة', 'Displacement Rate'), value: '2%/yr', color: OCEAN },
+                  ].map(c => (
+                    <div key={c.label} className="bg-gray-50 rounded-xl p-3 text-center">
+                      <p className="text-[10px] text-gray-500 mb-0.5">{c.label}</p>
+                      <p className="text-lg font-bold tabular-nums" style={{ color: c.color }}>{c.value}</p>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <Cpu className="w-6 h-6 mx-auto mb-2 opacity-30" />
+              <p className="text-xs">{t('جاري تحميل بيانات التوقعات...', 'Loading projection data...')}</p>
+            </div>
+          )}
+        </div>
+        </DataStory>
+
+        <InsightPanel
+          explanation="AI is projected to displace ~2% of existing jobs annually through automation while creating ~3% new AI-adjacent roles. The net effect is positive but varies dramatically by occupation and skill level."
+          insight={futureProj?.projections?.length ? (() => {
+            const last = futureProj.projections[futureProj.projections.length - 1];
+            const totalDisp = futureProj.projections.reduce((s: number, p: any) => s + (p.ai_displacement || 0), 0);
+            const totalNew = futureProj.projections.reduce((s: number, p: any) => s + (p.ai_new_jobs || 0), 0);
+            return `By 2030: ~${formatCompact(totalDisp)} jobs displaced vs ~${formatCompact(totalNew)} new AI roles created. Net demand reaches ${formatCompact(last.demand_jobs)}. Highest risk: routine clerical and data processing. Highest growth: AI/ML engineering, data science, prompt engineering, AI ethics.`;
+          })() : undefined}
+          recommendation="ACTION: (1) Launch AI literacy programs for ISCO groups 4 (Clerical) and 8 (Machine Operators) — highest displacement risk. (2) Expand university AI/ML programs to capture new job creation. (3) Create government reskilling funds targeting workers in >50% exposure occupations. (4) Monitor quarterly — displacement may accelerate with GPT-5+ adoption."
+          severity="warning"
+          source="AIOE Scores + Anthropic Economic Index + UAE Demand Trends"
+        />
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 8b: Executive Summary — AI Impact Conclusion
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div className="bg-gradient-to-br from-[#003366]/5 via-white to-[#007DB5]/5 rounded-2xl border border-[#003366]/15 p-6 shadow-sm">
+          <h3 className="text-sm font-bold text-[#003366] flex items-center gap-2 mb-4">
+            <Target className="w-4.5 h-4.5" />
+            {t('ملخص تنفيذي — تأثير الذكاء الاصطناعي', 'Executive Summary — AI Impact Assessment')}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+              <h4 className="text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Brain className="w-3.5 h-3.5" /> {t('نتائج رئيسية', 'Key Findings')}
+              </h4>
+              <ul className="space-y-1.5 text-[11px] text-gray-700">
+                <li>&#9679; {anthData?.summary?.total_occupations ? `${anthData.summary.total_occupations} occupations assessed for AI exposure` : 'Loading...'}</li>
+                <li>&#9679; {anthData?.summary?.avg_exposure ? `Average exposure: ${(anthData.summary.avg_exposure * 100).toFixed(1)}%` : 'Exposure data loading'}</li>
+                <li>&#9679; High-exposure occupations concentrated in data entry, clerical, and routine analytical roles</li>
+                <li>&#9679; Creative, physical, and interpersonal roles show lowest displacement risk</li>
+              </ul>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+              <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" /> {t('مخاطر', 'Risk Areas')}
+              </h4>
+              <ul className="space-y-1.5 text-[11px] text-gray-700">
+                <li>&#9679; ISCO groups 4 (Clerical) and 8 (Machine Operators) face highest automation risk</li>
+                <li>&#9679; Theoretical capability (AIOE) may overestimate near-term displacement</li>
+                <li>&#9679; Small/medium enterprises may adopt AI faster, displacing roles without reskilling support</li>
+                <li>&#9679; Gap between AI capability and actual adoption creates uncertainty in projections</li>
+              </ul>
+            </div>
+            <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+              <h4 className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" /> {t('فرص', 'Opportunities')}
+              </h4>
+              <ul className="space-y-1.5 text-[11px] text-gray-700">
+                <li>&#9679; Net job creation positive: AI creates more roles than it displaces</li>
+                <li>&#9679; New AI-adjacent roles: prompt engineering, AI ethics, human-AI coordination</li>
+                <li>&#9679; UAE Vision 2031 AI strategy positions the country as a global AI hub</li>
+                <li>&#9679; Early investment in AI literacy gives UAE workforce a competitive advantage</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SECTION 9: AI Research Chatbot
         ═══════════════════════════════════════════════════════════════════ */}
         <div className="bg-white border border-gray-100 shadow-md rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">

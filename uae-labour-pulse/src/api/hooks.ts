@@ -97,6 +97,17 @@ export function useAIImpact(params?: { sector?: string; limit?: number }) {
   });
 }
 
+export function useOccupationAIExposure(params?: {
+  search?: string; isco_group?: string; risk_level?: string;
+  sort?: string; order?: string; page?: number; limit?: number;
+}) {
+  return useQuery({
+    queryKey: ["occupation-ai-exposure", params],
+    queryFn: () => api.get<any>("/ai-impact/occupation-exposure", params as any),
+    staleTime: 60_000,
+  });
+}
+
 // --- Forecasts ---
 
 export function useForecasts(params?: {
@@ -755,6 +766,14 @@ export function useFutureProjection() {
     queryKey: ["future-projection"],
     queryFn: () => api.get<any>("/skill-matching/future-projection"),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useDemandProjection(params?: { region?: string; isco_group?: string; sector?: string; occupation?: string }) {
+  return useQuery({
+    queryKey: ["demand-projection", params],
+    queryFn: () => api.get<any>("/skill-matching/demand-projection", params as any),
+    staleTime: 3 * 60_000,
   });
 }
 
