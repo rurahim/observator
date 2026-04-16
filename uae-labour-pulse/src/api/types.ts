@@ -276,17 +276,38 @@ export interface SupplyDashboardResponse {
     total_graduates: number;
   };
   enrollment_trend: { year: number; enrollment: number; is_estimated: boolean; sources: string[] }[];
+  sector_trend: { year: number; sector: string; enrollment: number }[];
   by_emirate: { region_code: string; emirate: string; enrollment: number }[];
   by_specialty: { specialization: string; enrollment: number; data_type: string }[];
   by_gender: Record<string, number>;
+  by_nationality: Record<string, number>;
+  graduate_trend: { year: number; graduates: number; is_estimated: boolean }[];
+  grad_by_specialty: { specialization: string; graduates: number }[];
+  grad_gender: Record<string, number>;
+  grad_nationality: Record<string, number>;
+  grad_degree: { degree_level: string; graduates: number }[];
+  stem_split: { indicator: string; count: number }[];
+  uaeu_colleges: { college: string; graduates: number }[];
+  programs_by_field: { field: string; count: number }[];
+  programs_by_emirate: { emirate: string; count: number }[];
   program_distribution: { degree_level: string; count: number }[];
   institution_ranking: {
     institution: string; emirate: string; sector: string;
-    programs: number; graduates: number; latitude: number | null; longitude: number | null;
+    programs: number; graduates: number; lat: number | null; lng: number | null;
   }[];
-  graduate_trend: { year: number; graduates: number; is_estimated: boolean }[];
-  stem_split: { indicator: string; count: number }[];
+  top_skills: { skill: string; type: string; occupations: number; course_count?: number; skill_id?: string }[];
+  skills_by_type: { type: string; count: number }[];
+  digital_skills: { skill: string; occupations: number }[];
+  knowledge_areas: { area: string; occupations: number }[];
+  skills_kpis: { total_skills: number; total_mappings: number; essential_mappings: number };
   workforce_alignment: { occupation: string; code_isco: string; supply: number; demand: number; gap: number }[];
+  // New sections
+  enrollment_by_institution: { institution: string; emirate: string; enrollment: number }[];
+  graduate_employment: { year: number; avg_rate: number; graduates_with_rate: number }[];
+  graduate_credentials: { degree_level: string; graduates: number; avg_employment_rate: number | null }[];
+  wage_distribution: { wage_band: string; workers: number }[];
+  private_sector_trend: { year: number; isco_group: string; workers: number }[];
+  enrollment_nationality_detail: { institution: string; nationality: string; enrollment: number }[];
   sources: { source: string; rows: number; category: string }[];
 }
 

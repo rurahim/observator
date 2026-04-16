@@ -14,7 +14,7 @@ import ProtectedRoute from "@/components/shared/ProtectedRoute";
 import NotFound from "@/pages/NotFound";
 
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
-const SupplySidePage = lazy(() => import("@/pages/SupplySidePage"));
+const SupplySidePage = lazy(() => import("@/pages/SupplyDashboardPage"));
 const DemandSidePage = lazy(() => import("@/pages/DemandSidePage"));
 const KnowledgeBasePage = lazy(() => import("@/pages/KnowledgeBasePage"));
 const AIImpactPage = lazy(() => import("@/pages/AIImpactPage"));
